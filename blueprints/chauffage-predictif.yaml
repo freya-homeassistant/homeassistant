@@ -171,9 +171,6 @@ action:
       - conditions:
           - condition: trigger
             id: preheat_catchup
-          - condition: state
-            entity_id: !input calendar_entity
-            state: "on"
           - condition: template
             value_template: >
               {% set planned = states(input.preheat_start_time_text) | int(0) %}
@@ -200,9 +197,12 @@ action:
       - conditions:
           - condition: trigger
             id: preheat
-          - condition: state
-            entity_id: !input calendar_entity
-            state: "on"
+          - condition: template
+            value_template: >
+              {{
+                event_start_ts is not none and
+                as_timestamp(now()) < event_start_ts
+              }}
         sequence:
           - service: input_text.set_value
             target:
