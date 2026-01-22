@@ -133,13 +133,13 @@ blueprint:
           step: 10
           unit_of_measurement: "min"
 
-    preheat_start_time_number:
-      name: Entité (input_number) pour stocker le timestamp de début de chauffe
+    preheat_start_time_text:
+      name: Entité (input_text) pour stocker le timestamp de début de chauffe
       description: "Timestamp Unix en secondes (début de chauffe calculé)"
       default: ""
       selector:
         entity:
-          domain: input_number
+          domain: input_text
 
 mode: single
 
@@ -251,14 +251,14 @@ action:
               - conditions:
                   - condition: template
                     value_template: >
-                      {{ (input.preheat_start_time_number | default('')) != '' }}
+                      {{ (input.preheat_start_time_text | default('')) != '' }}
                 sequence:
-                  - service: input_number.set_value
+                  - service: input_text.set_value
                     data:
                       entity_id: >
-                        {{ input.preheat_start_time_number | default('') }}
+                        {{ input.preheat_start_time_text | default('') }}
                       value: >
-                        {{ (preheat_start_ts | int(0)) }}
+                        {{ (preheat_start_ts | int(0)) | string }}
           - service: climate.set_preset_mode
             target:
               entity_id: !input thermostat
