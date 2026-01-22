@@ -133,46 +133,58 @@ blueprint:
           step: 10
           unit_of_measurement: "min"
 
+    preheat_start_time_number:
+      name: Entité (input_number) pour stocker le timestamp de début de chauffe
+      description: "Timestamp Unix en secondes (début de chauffe calculé)"
+      default: ""
+      selector:
+        entity:
+          domain: input_number
+
 mode: single
+
+variables:
+  preheat_start_ts: >
+    {% set event = state_attr(input.calendar_entity, 'start_time') %}
+    {% if event %}
+      {% set cible = as_datetime(event) %}
+      {% set rate_raw = states(input.inertia_sensor) %}
+      {% set rate_in = (rate_raw | replace(',', '.')) | float(0) %}
+      {% set inertia_unit = input.inertia_unit %}
+      {% if inertia_unit == 'c_per_hour' %}
+        {% set rate = (rate_in / 60) %}
+      {% else %}
+        {% set rate = rate_in %}
+      {% endif %}
+      {% set temp_actuelle = states(input.temperature_sensor) | float(0) %}
+      {% set preset = input.presence_preset_on %}
+      {% if preset == 'comfort' %}
+        {% set consigne = states(input.comfort_temperature_number) | float(0) %}
+      {% elif preset == 'eco' %}
+        {% set consigne = states(input.eco_temperature_number) | float(0) %}
+      {% elif preset == 'boost' %}
+        {% set consigne = states(input.boost_temperature_number) | float(0) %}
+      {% else %}
+        {% set consigne = state_attr(input.thermostat, 'temperature') | float(0) %}
+      {% endif %}
+      {% set delta = consigne - temp_actuelle %}
+      {% set max_i = input.max_inertia | int %}
+      {% if rate > 0 and delta > 0 %}
+        {% set minutes_needed = (delta / rate) | round(0, 'ceil') | int %}
+        {% set minutes = [minutes_needed, max_i] | min %}
+      {% else %}
+        {% set minutes = 60 %}
+      {% endif %}
+      {{ (as_timestamp(cible) - (minutes * 60)) | int }}
+    {% else %}
+      {{ none }}
+    {% endif %}
 
 trigger:
   - platform: template
     id: preheat
     value_template: >
-      {% set event = state_attr(input.calendar_entity, 'start_time') %}
-      {% if event %}
-        {% set cible = as_datetime(event) %}
-        {% set rate_raw = states(input.inertia_sensor) %}
-        {% set rate_in = (rate_raw | replace(',', '.')) | float(0) %}
-        {% set inertia_unit = input.inertia_unit %}
-        {% if inertia_unit == 'c_per_hour' %}
-          {% set rate = (rate_in / 60) %}
-        {% else %}
-          {% set rate = rate_in %}
-        {% endif %}
-        {% set temp_actuelle = states(input.temperature_sensor) | float(0) %}
-        {% set preset = input.presence_preset_on %}
-        {% if preset == 'comfort' %}
-          {% set consigne = states(input.comfort_temperature_number) | float(0) %}
-        {% elif preset == 'eco' %}
-          {% set consigne = states(input.eco_temperature_number) | float(0) %}
-        {% elif preset == 'boost' %}
-          {% set consigne = states(input.boost_temperature_number) | float(0) %}
-        {% else %}
-          {% set consigne = state_attr(input.thermostat, 'temperature') | float(0) %}
-        {% endif %}
-        {% set delta = consigne - temp_actuelle %}
-        {% set max_i = input.max_inertia | int %}
-        {% if rate > 0 and delta > 0 %}
-          {% set minutes_needed = (delta / rate) | round(0, 'ceil') | int %}
-          {% set minutes = [minutes_needed, max_i] | min %}
-          {{ as_timestamp(now()) >= (as_timestamp(cible) - (minutes * 60)) }}
-        {% else %}
-          {{ as_timestamp(now()) >= as_timestamp(cible) - 60 * 60 }}
-        {% endif %}
-      {% else %}
-        false
-      {% endif %}
+      {{ preheat_start_ts is not none and as_timestamp(now()) >= (preheat_start_ts | int) }}
 
   - platform: state
     id: presence_on
@@ -235,6 +247,18 @@ action:
               {% endif %}
               {{ temp_actuelle < (consigne - 0.2) }}
         sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ (input.preheat_start_time_number | default('')) != '' }}
+                sequence:
+                  - service: input_number.set_value
+                    target:
+                      entity_id: !input preheat_start_time_number
+                    data:
+                      value: >
+                        {{ (preheat_start_ts | int(0)) }}
           - service: climate.set_preset_mode
             target:
               entity_id: !input thermostat
