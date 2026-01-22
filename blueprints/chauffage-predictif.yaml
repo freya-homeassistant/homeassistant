@@ -1,0 +1,177 @@
+blueprint:
+  name: Chauffage anticipé VT (inertie + météo + calendrier + absence)
+  description: >
+    Chauffage anticipé basé sur l'inertie thermique apprise,
+    la température extérieure, un calendrier de présence
+    et un calendrier d'absence.
+  domain: automation
+  input:
+    thermostat:
+      name: Thermostat Versatile
+      selector:
+        entity:
+          domain: climate
+
+    temperature_sensor:
+      name: Capteur de température intérieure
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+
+    inertia_sensor:
+      name: Inertie apprise (minutes)
+      selector:
+        entity:
+          domain: sensor
+
+    outside_temperature:
+      name: Température extérieure
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+
+    calendar_entity:
+      name: Calendrier de présence
+      selector:
+        entity:
+          domain: calendar
+
+    calendar_entity_state:
+      name: État requis du calendrier de présence
+      description: "Choisir si l'automatisation doit être autorisée quand le calendrier de présence est actif (on) ou inactif (off)."
+      default: "on"
+      selector:
+        select:
+          options:
+            - "on"
+            - "off"
+
+    absence_calendar:
+      name: Calendrier d'absence
+      description: "Vacances, déplacements, etc."
+      selector:
+        entity:
+          domain: calendar
+
+    absence_calendar_state:
+      name: État bloquant du calendrier d'absence
+      description: "Choisir si l'automatisation doit être bloquée quand le calendrier est actif (on) ou inactif (off)."
+      default: "on"
+      selector:
+        select:
+          options:
+            - "on"
+            - "off"
+
+    presence_preset_on:
+      name: Preset si présence active
+      description: "Ex: comfort, eco, boost"
+      selector:
+        select:
+          options:
+            - comfort
+            - eco
+            - boost
+
+    presence_preset_off:
+      name: Preset si présence inactive
+      description: "Ex: comfort, eco, boost"
+      selector:
+        select:
+          options:
+            - comfort
+            - eco
+            - boost
+
+    earliest_start:
+      name: Heure minimale de démarrage
+      default: "05:00:00"
+      selector:
+        time: {}
+
+    max_inertia:
+      name: Inertie maximale (minutes)
+      default: 180
+      selector:
+        number:
+          min: 30
+          max: 300
+          step: 10
+          unit_of_measurement: "min"
+
+mode: single
+
+trigger:
+  - platform: template
+    id: preheat
+    value_template: >
+      {% set event = state_attr(input.calendar_entity, 'start_time') %}
+      {% if event %}
+        {% set cible = as_datetime(event) %}
+        {% set inertie = states(input.inertia_sensor) | int(60) %}
+        {% set max_i = input.max_inertia | int %}
+        {% set minutes = [inertie, max_i] | min %}
+        {{ now() >= (cible - timedelta(minutes=minutes)) }}
+      {% else %}
+        false
+      {% endif %}
+
+  - platform: state
+    id: presence_on
+    entity_id: !input calendar_entity
+    to: "on"
+
+  - platform: state
+    id: presence_off
+    entity_id: !input calendar_entity
+    to: "off"
+
+condition:
+  # ❌ Blocage si absence active
+  - condition: state
+    entity_id: !input absence_calendar
+    state: !input absence_calendar_state
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: presence_off
+        sequence:
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              preset_mode: !input presence_preset_off
+
+      - conditions:
+          - condition: trigger
+            id: presence_on
+        sequence:
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              preset_mode: !input presence_preset_on
+
+      - conditions:
+          - condition: trigger
+            id: preheat
+          - condition: state
+            entity_id: !input calendar_entity
+            state: "on"
+          - condition: time
+            after: !input earliest_start
+          - condition: template
+            value_template: >
+              {% set temp_actuelle = states(input.temperature_sensor) | float %}
+              {% set consigne = state_attr(input.thermostat, 'temperature') | float %}
+              {{ temp_actuelle < (consigne - 0.2) }}
+        sequence:
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              preset_mode: !input presence_preset_on
