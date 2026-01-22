@@ -4,19 +4,23 @@ Ce document décrit le blueprint Home Assistant `Chauffage anticipé VT (inertie
 
 ## Objectif
 
-Ce blueprint pilote un thermostat (typiquement _Versatile Thermostat_) via des `preset_mode` en fonction :
+Ce blueprint pilote un thermostat (typiquement _Versatile Thermostat_) en fixant une consigne via `climate.set_temperature` en fonction :
 
 - d’un **calendrier de présence** (présence active/inactive),
 - d’un **calendrier d’absence** (vacances/déplacement) servant de **verrou**,
-- d’une **inertie thermique apprise** (en minutes) pour anticiper le préchauffage.
+- d’un **taux de chauffe** (slope) pour anticiper le préchauffage,
+- d’une **pondération météo** (température extérieure),
+- d’un **facteur d’apprentissage** pour ajuster le taux de chauffe dans le temps.
 
 ## Prérequis
 
-- Un thermostat `climate` supportant le service `climate.set_preset_mode`.
+- Un thermostat `climate` supportant le service `climate.set_temperature`.
 - Un calendrier `calendar` représentant la **présence**.
 - Un calendrier `calendar` représentant l’**absence**.
 - Un capteur `sensor` de température intérieure.
-- Un capteur `sensor` fournissant l’**inertie apprise** en **°C/min** (taux de chauffe moyen).
+- Un capteur `sensor` fournissant un **taux de chauffe** (slope) en **°C/min** ou **°C/h**.
+- Un `input_number` servant de facteur d’apprentissage.
+- Un `input_text` servant à stocker le timestamp de préchauffe calculé.
 
 ## Paramètres (inputs)
 
@@ -28,127 +32,126 @@ Ce blueprint pilote un thermostat (typiquement _Versatile Thermostat_) via des `
 
   - Entité `sensor` (device_class `temperature`).
 
-- **Inertie apprise (°C/min)** (`inertia_sensor`)
+- **Slope VT** (`inertia_sensor`)
 
   - Entité `sensor` contenant un taux (ex: `0.01`).
   - Les valeurs avec virgule sont acceptées (ex: `0,01`).
 
+- **Unité du slope** (`inertia_unit`)
+
+  - `c_per_min` (°C/min) ou `c_per_hour` (°C/h).
+
 - **Température extérieure** (`outside_temperature`)
 
   - Entité `sensor` (device_class `temperature`).
-  - Remarque: ce paramètre est présent dans le blueprint mais **n’est pas utilisé** dans la logique actuelle.
+  - Utilisée pour pondérer le taux de chauffe:
+    - si `ext < 0` alors `rate * 0.8`
+    - si `ext > 10` alors `rate * 1.15`
 
 - **Calendrier de présence** (`calendar_entity`)
 
   - Entité `calendar`.
 
-- **État requis du calendrier de présence** (`calendar_entity_state`)
-
-  - Valeur `on`/`off`.
-  - Remarque: ce paramètre est présent dans le blueprint mais **n’est pas utilisé** dans la logique actuelle.
-
 - **Calendrier d'absence** (`absence_calendar`)
 
   - Entité `calendar`.
 
-- **État bloquant du calendrier d'absence** (`absence_calendar_state`)
-
-  - Valeur `on`/`off`.
-  - L’automatisation est exécutée uniquement si le calendrier d’absence est dans cet état.
-
-- **Preset si présence active** (`presence_preset_on`)
-
-  - Exemple: `comfort`, `eco`, `boost`.
-
-- **Preset si présence inactive** (`presence_preset_off`)
-
-  - Exemple: `comfort`, `eco`, `boost`.
-
 - **Température preset comfort (number)** (`comfort_temperature_number`)
 
   - Entité `number` (ex: `number.central_configuration_preset_comfort_temp`).
-  - Sert à déterminer la consigne lorsque `presence_preset_on = comfort`.
-
-- **Température preset eco (number)** (`eco_temperature_number`)
-
-  - Entité `number` exposée par Versatile Thermostat.
-  - Sert à déterminer la consigne lorsque `presence_preset_on = eco`.
-
-- **Température preset boost (number)** (`boost_temperature_number`)
-
-  - Entité `number` exposée par Versatile Thermostat.
-  - Sert à déterminer la consigne lorsque `presence_preset_on = boost`.
+  - Sert de consigne `target_temp`.
 
 - **Heure minimale de démarrage** (`earliest_start`)
 
   - Heure après laquelle le préchauffage est autorisé (défaut `05:00:00`).
 
 - **Inertie maximale (minutes)** (`max_inertia`)
+
   - Plafond (défaut `180`).
   - L’inertie réelle utilisée = `min(inertie_apprise, inertie_max)`.
+
+- **Facteur d’apprentissage** (`learning_factor`)
+
+  - Entité `input_number`.
+  - Multiplie le taux de chauffe estimé (`rate`).
+
+- **Stockage timestamp préchauffe** (`preheat_start_time_text`)
+
+  - Entité `input_text`.
+  - Stocke le timestamp Unix calculé du début de préchauffe (`preheat_start_ts`) pour éviter les doublons et servir à l’apprentissage.
 
 ## Fonctionnement
 
 ### Déclencheurs (triggers)
 
-- **`presence_on`**: quand le calendrier de présence passe à `on`.
-- **`presence_off`**: quand le calendrier de présence passe à `off`.
 - **`preheat`** (_template trigger_):
+
   - Récupère `start_time` du calendrier de présence.
-  - Calcule une durée d’anticipation en minutes à partir du taux de chauffe:
-    - `rate = sensor(inertia_sensor)` en °C/min
-    - `consigne` est récupérée depuis les entités `number` des presets (comfort/eco/boost) en fonction de `presence_preset_on`
-    - `delta = consigne - temp_int`
-    - `minutes_needed = ceil(delta / rate)`
-    - `minutes = min(minutes_needed, max_inertia)`
-  - Déclenche lorsque `now() >= start_time - minutes`.
-  - Si le calcul n’est pas possible (ex: `rate <= 0` ou `delta <= 0`), déclenche lorsque `now() >= start_time`.
+  - Calcule un timestamp de début de préchauffe `preheat_start_ts` (en secondes Unix) avec:
+    - `target_temp` depuis `comfort_temperature_number`
+    - `delta = target_temp - temp_int`
+    - `rate` depuis `inertia_sensor` (converti selon `inertia_unit`)
+    - pondération météo via `outside_temperature`
+    - multiplication par `learning_factor`
+    - plafonnement via `max_inertia`
+    - contrainte de démarrage minimum via `earliest_start`
+  - Déclenche dans une fenêtre de 60s: `preheat_start_ts <= now() < preheat_start_ts + 60`.
+
+- **`preheat_catchup`** (_time_pattern_):
+
+  - Se déclenche toutes les minutes.
+  - Sert de rattrapage si Home Assistant a raté la fenêtre de 60s.
+
+- **`learning`** (_numeric_state_):
+  - Se déclenche lorsque la température intérieure dépasse la consigne comfort (`temperature_sensor` au-dessus de `comfort_temperature_number`).
 
 ### Condition globale
 
-- **Blocage absence**: le calendrier d’absence doit être dans l’état `absence_calendar_state`.
-
-Attention: dans la version actuelle, cette condition n’est pas un « blocage si absence active » au sens générique, mais une condition stricte: _l’état doit correspondre exactement à la valeur configurée_. Si vous laissez `absence_calendar_state = on`, l’automatisation ne s’exécutera que lorsque le calendrier d’absence est `on`.
+- **Blocage absence**: l’automatisation ne s’exécute pas si `absence_calendar` est `on`.
 
 ### Actions
 
 Le blueprint utilise un `choose` selon l’identifiant du trigger.
 
-- **Si `presence_off`**:
-
-  - Applique `climate.set_preset_mode` avec `presence_preset_off`.
-
-- **Si `presence_on`**:
-
-  - Applique `climate.set_preset_mode` avec `presence_preset_on`.
-
 - **Si `preheat`** (pré-chauffage anticipé):
-  - Conditions supplémentaires:
-    - le calendrier de présence doit être `on`,
-    - l’heure actuelle doit être après `earliest_start`,
-    - la température intérieure doit être inférieure à `consigne - 0.2`.
-      - `consigne` est lu depuis l’attribut `temperature` du thermostat.
-  - Action:
-    - applique `climate.set_preset_mode` avec `presence_preset_on`.
+
+  - Conditions:
+    - le calendrier de présence doit être `on`.
+  - Actions:
+    - stocke `preheat_start_ts` dans `preheat_start_time_text`.
+    - applique `climate.set_temperature` avec `temperature = target_temp`.
+
+- **Si `preheat_catchup`** (rattrapage):
+
+  - Conditions:
+    - le calendrier de présence doit être `on`.
+    - `now()` est après `preheat_start_ts + 60`.
+    - `now()` est avant le début de l’évènement calendrier.
+    - anti-doublon via `preheat_start_time_text`.
+  - Actions identiques à `preheat` (stockage + `climate.set_temperature`).
+
+- **Si `learning`** (apprentissage):
+  - Compare l’heure réelle (quand on dépasse la consigne) à l’heure planifiée stockée.
+  - Ajuste `learning_factor` légèrement (borné) pour améliorer le calcul des prochaines préchauffes.
+  - Garde-fous: si le timestamp planifié est absent/incohérent/trop ancien, le facteur n’est pas modifié.
 
 ## Exemple de configuration
 
 - **Calendrier de présence**: un événement « Présence » démarre à `07:30`.
-- **Inertie apprise**: `0.01` °C/min.
+- **Slope**: `0.01` °C/min.
 - **Inertie max**: `180`.
 
-Le trigger `preheat` devient vrai à `06:00` (`07:30 - minutes`). Si après `earliest_start` et si la température intérieure est < consigne - 0.2, le blueprint passe le thermostat sur le preset de présence (ex: `comfort`).
+Le blueprint calcule `preheat_start_ts` (par ex. vers `06:00` si l’anticipation nécessaire est 90 minutes), puis déclenche à ce moment-là pour fixer la consigne comfort sur le thermostat.
 
 ## Points d’attention / dépannage
 
 - **Calendrier d’absence (condition)**
 
-  - Vérifiez la valeur de `absence_calendar_state`.
-  - Si votre intention est “bloquer quand absence = on”, alors il faut que la condition soit l’inverse (non implémenté dans la version actuelle).
+  - Le blueprint ne s’exécute pas si `absence_calendar` est `on`.
 
-- **`outside_temperature` et `calendar_entity_state` non utilisés**
+- **Température extérieure**
 
-  - Ces inputs existent mais ne modifient pas le comportement actuel.
+  - `outside_temperature` influence le taux de chauffe (pondération) et donc l’heure de préchauffe.
 
 - **Attribut `start_time`**
 
@@ -159,5 +162,7 @@ Le trigger `preheat` devient vrai à `06:00` (`07:30 - minutes`). Si après `ear
 
   - Si le capteur n’est pas numérique (ou si le taux est `<= 0`), le blueprint bascule sur un déclenchement à l’heure du calendrier (`start_time`) au lieu d’anticiper.
 
-- **Hystérésis**
-  - Le seuil `consigne - 0.2` évite de relancer un préchauffage si la température est déjà proche de la consigne.
+- **Fenêtre de déclenchement et rattrapage**
+
+  - Le trigger `preheat` a une fenêtre de 60 secondes.
+  - Si Home Assistant rate cette fenêtre (redémarrage/charge), le rattrapage `preheat_catchup` tentera de démarrer la préchauffe jusqu’au début de l’évènement.
