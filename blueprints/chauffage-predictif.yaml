@@ -1,9 +1,8 @@
 blueprint:
-  name: Chauffage anticipé VT (inertie + calendrier + absence)
+  name: Chauffage anticipé VT (auto-apprenant + météo)
   description: >
-    Chauffage anticipé basé sur l'inertie thermique apprise,
-    la température intérieure, un calendrier de présence
-    et un calendrier d'absence.
+    Chauffage anticipé basé sur le slope Versatile Thermostat,
+    pondération météo et apprentissage automatique de l'inertie.
   domain: automation
   input:
     thermostat:
@@ -13,29 +12,35 @@ blueprint:
           domain: climate
 
     temperature_sensor:
-      name: Capteur de température intérieure
+      name: Température intérieure
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+
+    outside_temperature:
+      name: Température extérieure
       selector:
         entity:
           domain: sensor
           device_class: temperature
 
     inertia_sensor:
-      name: Inertie apprise
-      description: "Dérive thermique (°C/min ou °C/h)"
+      name: Slope VT
       selector:
         entity:
           domain: sensor
 
     inertia_unit:
-      name: Unité de l’inertie
-      default: "c_per_min"
+      name: Unité du slope
+      default: c_per_hour
       selector:
         select:
           options:
             - label: "°C/min"
-              value: "c_per_min"
+              value: c_per_min
             - label: "°C/h"
-              value: "c_per_hour"
+              value: c_per_hour
 
     calendar_entity:
       name: Calendrier de présence
@@ -49,55 +54,35 @@ blueprint:
         entity:
           domain: calendar
 
-    presence_preset_on:
-      name: Preset en cas de présence
-      selector:
-        select:
-          options: [comfort, eco, boost]
-
-    presence_preset_off:
-      name: Preset en cas d'absence
-      selector:
-        select:
-          options: [comfort, eco, boost]
-
     comfort_temperature_number:
-      name: Température comfort
-      selector:
-        entity:
-          domain: number
-
-    eco_temperature_number:
-      name: Température eco
-      selector:
-        entity:
-          domain: number
-
-    boost_temperature_number:
-      name: Température boost
+      name: Consigne comfort
       selector:
         entity:
           domain: number
 
     earliest_start:
-      name: Heure minimale de démarrage
+      name: Heure minimale de chauffe
       default: "05:00:00"
       selector:
         time: {}
 
     max_inertia:
-      name: Inertie maximale (minutes)
+      name: Inertie max (minutes)
       default: 180
       selector:
         number:
           min: 30
           max: 300
           step: 10
-          unit_of_measurement: min
+
+    learning_factor:
+      name: Facteur d’apprentissage
+      selector:
+        entity:
+          domain: input_number
 
     preheat_start_time_text:
-      name: Stockage du timestamp de préchauffe
-      description: "input_text pour stocker le timestamp Unix calculé"
+      name: Stockage timestamp préchauffe
       selector:
         entity:
           domain: input_text
@@ -105,16 +90,7 @@ blueprint:
 mode: single
 
 variables:
-  target_temperature: >
-    {% if input.presence_preset_on == 'comfort' %}
-      {{ states(input.comfort_temperature_number) | float(0) }}
-    {% elif input.presence_preset_on == 'eco' %}
-      {{ states(input.eco_temperature_number) | float(0) }}
-    {% elif input.presence_preset_on == 'boost' %}
-      {{ states(input.boost_temperature_number) | float(0) }}
-    {% else %}
-      {{ state_attr(input.thermostat, 'temperature') | float(0) }}
-    {% endif %}
+  target_temp: "{{ states(input.comfort_temperature_number) | float(0) }}"
 
   preheat_start_ts: >
     {% set event = state_attr(input.calendar_entity, 'start_time') %}
@@ -122,27 +98,37 @@ variables:
       {{ none }}
     {% else %}
       {% set cible = as_datetime(event) %}
-      {% set temp_actuelle = states(input.temperature_sensor) | float(0) %}
-      {% set delta = target_temperature - temp_actuelle %}
-      {% set rate_raw = states(input.inertia_sensor) | replace(',', '.') | float(0) %}
+      {% set temp_now = states(input.temperature_sensor) | float(0) %}
+      {% set delta = target_temp - temp_now %}
+      {% set raw = states(input.inertia_sensor) | replace(',', '.') | float(0) %}
 
       {% if input.inertia_unit == 'c_per_hour' %}
-        {% set rate = rate_raw / 60 %}
+        {% set rate = raw / 60 %}
       {% else %}
-        {% set rate = rate_raw %}
+        {% set rate = raw %}
       {% endif %}
+
+      {# Pondération météo #}
+      {% set ext = states(input.outside_temperature) | float(0) %}
+      {% if ext < 0 %}
+        {% set rate = rate * 0.8 %}
+      {% elif ext > 10 %}
+        {% set rate = rate * 1.15 %}
+      {% endif %}
+
+      {# Apprentissage #}
+      {% set rate = rate * (states(input.learning_factor) | float(1)) %}
 
       {% set max_i = input.max_inertia | int %}
       {% if rate > 0 and delta > 0 %}
-        {% set minutes_needed = (delta / rate) | round(0, 'ceil') | int %}
-        {% set minutes = [minutes_needed, max_i] | min %}
+        {% set minutes = [(delta / rate) | round(0, 'ceil'), max_i] | min %}
       {% else %}
         {% set minutes = max_i %}
       {% endif %}
 
-      {% set ts_calc = as_timestamp(cible) - (minutes * 60) %}
-      {% set ts_earliest = today_at(input.earliest_start) | as_timestamp %}
-      {{ [ts_calc, ts_earliest] | max | int }}
+      {% set ts_calc = as_timestamp(cible) - minutes * 60 %}
+      {% set ts_min = today_at(input.earliest_start) | as_timestamp %}
+      {{ [ts_calc, ts_min] | max | int }}
     {% endif %}
 
 trigger:
@@ -155,18 +141,12 @@ trigger:
         as_timestamp(now()) < preheat_start_ts + 60
       }}
 
-  - platform: state
-    id: presence_on
-    entity_id: !input calendar_entity
-    to: "on"
-
-  - platform: state
-    id: presence_off
-    entity_id: !input calendar_entity
-    to: "off"
+  - platform: numeric_state
+    id: learning
+    entity_id: !input temperature_sensor
+    above: !input comfort_temperature_number
 
 condition:
-  # Blocage si absence active
   - condition: not
     conditions:
       - condition: state
@@ -175,55 +155,43 @@ condition:
 
 action:
   - choose:
-      # Présence OFF → preset absence
-      - conditions:
-          - condition: trigger
-            id: presence_off
-        sequence:
-          - condition: template
-            value_template: >
-              {{ state_attr(input.thermostat, 'preset_mode') != input.presence_preset_off }}
-          - service: climate.set_preset_mode
-            target:
-              entity_id: !input thermostat
-            data:
-              preset_mode: !input presence_preset_off
-
-      # Présence ON → preset présence
-      - conditions:
-          - condition: trigger
-            id: presence_on
-        sequence:
-          - condition: template
-            value_template: >
-              {{ state_attr(input.thermostat, 'preset_mode') != input.presence_preset_on }}
-          - service: climate.set_preset_mode
-            target:
-              entity_id: !input thermostat
-            data:
-              preset_mode: !input presence_preset_on
-
-      # Préchauffe anticipée
+      # 🔥 Préchauffe
       - conditions:
           - condition: trigger
             id: preheat
           - condition: state
             entity_id: !input calendar_entity
             state: "on"
-          - condition: template
-            value_template: >
-              {{ states(input.temperature_sensor) | float(0) < target_temperature - 0.2 }}
         sequence:
           - service: input_text.set_value
             target:
               entity_id: !input preheat_start_time_text
             data:
               value: "{{ preheat_start_ts }}"
-          - condition: template
-            value_template: >
-              {{ state_attr(input.thermostat, 'preset_mode') != input.presence_preset_on }}
-          - service: climate.set_preset_mode
+          - service: climate.set_temperature
             target:
               entity_id: !input thermostat
             data:
-              preset_mode: !input presence_preset_on
+              temperature: "{{ target_temp }}"
+
+      # 🧠 Apprentissage
+      - conditions:
+          - condition: trigger
+            id: learning
+        sequence:
+          - variables:
+              planned: "{{ states(input.preheat_start_time_text) | int(0) }}"
+              error_min: "{{ (as_timestamp(now()) - planned) / 60 }}"
+              factor: "{{ states(input.learning_factor) | float(1) }}"
+          - service: input_number.set_value
+            target:
+              entity_id: !input learning_factor
+            data:
+              value: >
+                {% if error_min > 5 %}
+                  {{ [factor * 0.98, 0.7] | max | round(2) }}
+                {% elif error_min < -5 %}
+                  {{ [factor * 1.02, 1.3] | min | round(2) }}
+                {% else %}
+                  {{ factor | round(2) }}
+                {% endif %}
