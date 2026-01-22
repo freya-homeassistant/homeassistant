@@ -138,8 +138,11 @@ variables:
     {% endif %}
 
 trigger:
+   # 🔹 Au démarrage de HA
+  - platform: homeassistant
+    event: start
   - platform: time_pattern
-    minutes: "/1"
+    minutes: "/30"
 
 condition:
   - condition: template
