@@ -25,6 +25,17 @@ blueprint:
         entity:
           domain: sensor
 
+    inertia_unit:
+      name: Unité de dérive (capteur inertie)
+      default: "c_per_min"
+      selector:
+        select:
+          options:
+            - label: "°C/min"
+              value: "c_per_min"
+            - label: "°C/h"
+              value: "c_per_hour"
+
     outside_temperature:
       name: Température extérieure
       selector:
@@ -132,7 +143,13 @@ trigger:
       {% if event %}
         {% set cible = as_datetime(event) %}
         {% set rate_raw = states(input.inertia_sensor) %}
-        {% set rate = (rate_raw | replace(',', '.')) | float(0) %}
+        {% set rate_in = (rate_raw | replace(',', '.')) | float(0) %}
+        {% set inertia_unit = input.inertia_unit %}
+        {% if inertia_unit == 'c_per_hour' %}
+          {% set rate = (rate_in / 60) %}
+        {% else %}
+          {% set rate = rate_in %}
+        {% endif %}
         {% set temp_actuelle = states(input.temperature_sensor) | float(0) %}
         {% set preset = input.presence_preset_on %}
         {% if preset == 'comfort' %}
