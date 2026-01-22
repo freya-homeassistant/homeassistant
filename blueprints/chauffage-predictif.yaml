@@ -20,7 +20,7 @@ blueprint:
           device_class: temperature
 
     inertia_sensor:
-      name: Inertie apprise (minutes)
+      name: Inertie apprise (°C/min)
       selector:
         entity:
           domain: sensor
@@ -110,10 +110,19 @@ trigger:
       {% set event = state_attr(input.calendar_entity, 'start_time') %}
       {% if event %}
         {% set cible = as_datetime(event) %}
-        {% set inertie = states(input.inertia_sensor) | int(60) %}
+        {% set rate_raw = states(input.inertia_sensor) %}
+        {% set rate = (rate_raw | replace(',', '.')) | float(0) %}
+        {% set temp_actuelle = states(input.temperature_sensor) | float(0) %}
+        {% set consigne = state_attr(input.thermostat, 'temperature') | float(0) %}
+        {% set delta = consigne - temp_actuelle %}
         {% set max_i = input.max_inertia | int %}
-        {% set minutes = [inertie, max_i] | min %}
-        {{ now() >= (cible - timedelta(minutes=minutes)) }}
+        {% if rate > 0 and delta > 0 %}
+          {% set minutes_needed = (delta / rate) | round(0, 'ceil') | int %}
+          {% set minutes = [minutes_needed, max_i] | min %}
+          {{ now() >= (cible - timedelta(minutes=minutes)) }}
+        {% else %}
+          false
+        {% endif %}
       {% else %}
         false
       {% endif %}

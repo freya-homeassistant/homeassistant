@@ -16,7 +16,7 @@ Ce blueprint pilote un thermostat (typiquement _Versatile Thermostat_) via des `
 - Un calendrier `calendar` représentant la **présence**.
 - Un calendrier `calendar` représentant l’**absence**.
 - Un capteur `sensor` de température intérieure.
-- Un capteur `sensor` fournissant l’**inertie apprise** en minutes.
+- Un capteur `sensor` fournissant l’**inertie apprise** en **°C/min** (taux de chauffe moyen).
 
 ## Paramètres (inputs)
 
@@ -28,9 +28,10 @@ Ce blueprint pilote un thermostat (typiquement _Versatile Thermostat_) via des `
 
   - Entité `sensor` (device_class `temperature`).
 
-- **Inertie apprise (minutes)** (`inertia_sensor`)
+- **Inertie apprise (°C/min)** (`inertia_sensor`)
 
-  - Entité `sensor` contenant un nombre de minutes (ex: `60`).
+  - Entité `sensor` contenant un taux (ex: `0.01`).
+  - Les valeurs avec virgule sont acceptées (ex: `0,01`).
 
 - **Température extérieure** (`outside_temperature`)
 
@@ -79,9 +80,11 @@ Ce blueprint pilote un thermostat (typiquement _Versatile Thermostat_) via des `
 - **`presence_off`**: quand le calendrier de présence passe à `off`.
 - **`preheat`** (_template trigger_):
   - Récupère `start_time` du calendrier de présence.
-  - Calcule une durée d’anticipation en minutes:
-    - `inertie = sensor(inertia_sensor)` (défaut 60 si non numérique)
-    - `minutes = min(inertie, max_inertia)`
+  - Calcule une durée d’anticipation en minutes à partir du taux de chauffe:
+    - `rate = sensor(inertia_sensor)` en °C/min
+    - `delta = consigne - temp_int`
+    - `minutes_needed = ceil(delta / rate)`
+    - `minutes = min(minutes_needed, max_inertia)`
   - Déclenche lorsque `now() >= start_time - minutes`.
 
 ### Condition globale
@@ -114,10 +117,10 @@ Le blueprint utilise un `choose` selon l’identifiant du trigger.
 ## Exemple de configuration
 
 - **Calendrier de présence**: un événement « Présence » démarre à `07:30`.
-- **Inertie apprise**: `90` minutes.
+- **Inertie apprise**: `0.01` °C/min.
 - **Inertie max**: `180`.
 
-Le trigger `preheat` devient vrai à `06:00` (`07:30 - 90min`). Si après `earliest_start` et si la température intérieure est < consigne - 0.2, le blueprint passe le thermostat sur le preset de présence (ex: `comfort`).
+Le trigger `preheat` devient vrai à `06:00` (`07:30 - minutes`). Si après `earliest_start` et si la température intérieure est < consigne - 0.2, le blueprint passe le thermostat sur le preset de présence (ex: `comfort`).
 
 ## Points d’attention / dépannage
 
@@ -137,7 +140,7 @@ Le trigger `preheat` devient vrai à `06:00` (`07:30 - 90min`). Si après `earli
 
 - **Inertie apprise**
 
-  - Si le capteur n’est pas numérique, l’inertie par défaut utilisée est `60` minutes.
+  - Si le capteur n’est pas numérique (ou si le taux est `<= 0`), le préchauffage ne se déclenche pas.
 
 - **Hystérésis**
   - Le seuil `consigne - 0.2` évite de relancer un préchauffage si la température est déjà proche de la consigne.
