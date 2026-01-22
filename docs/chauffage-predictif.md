@@ -86,6 +86,7 @@ Ce blueprint pilote un thermostat (typiquement _Versatile Thermostat_) via des `
     - `minutes_needed = ceil(delta / rate)`
     - `minutes = min(minutes_needed, max_inertia)`
   - Déclenche lorsque `now() >= start_time - minutes`.
+  - Si le calcul n’est pas possible (ex: `rate <= 0` ou `delta <= 0`), déclenche lorsque `now() >= start_time`.
 
 ### Condition globale
 
@@ -140,7 +141,7 @@ Le trigger `preheat` devient vrai à `06:00` (`07:30 - minutes`). Si après `ear
 
 - **Inertie apprise**
 
-  - Si le capteur n’est pas numérique (ou si le taux est `<= 0`), le préchauffage ne se déclenche pas.
+  - Si le capteur n’est pas numérique (ou si le taux est `<= 0`), le blueprint bascule sur un déclenchement à l’heure du calendrier (`start_time`) au lieu d’anticiper.
 
 - **Hystérésis**
   - Le seuil `consigne - 0.2` évite de relancer un préchauffage si la température est déjà proche de la consigne.
