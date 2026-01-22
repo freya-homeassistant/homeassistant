@@ -97,11 +97,6 @@ variables:
     {% set ev = state_attr(input.calendar_entity, 'start_time') %}
     {{ as_timestamp(ev) if ev else none }}
 
-  stored_preheat_ts: >
-    {{ as_timestamp(states(input.preheat_start_datetime))
-       if states(input.preheat_start_datetime) not in ('unknown','unavailable','')
-       else 0 }}
-
   preheat_start_ts: >
     {% if event_start_ts is none %}
       {{ none }}
@@ -146,16 +141,9 @@ trigger:
   - platform: time_pattern
     minutes: "/1"
 
-  - platform: template
-    id: learning
-    value_template: >
-      {{ states(input.temperature_sensor) | float(0)
-         > states(input.comfort_temperature_number) | float(0) }}
-
 condition:
   - condition: template
     value_template: "{{ event_start_ts is not none }}"
-
   - condition: not
     conditions:
       - condition: state
@@ -164,12 +152,19 @@ condition:
 
 action:
   # 💾 Stockage systématique du préchauffe calculé
+  - variables:
+      stored_preheat_ts: >
+        {% set val = states(input.preheat_start_datetime) %}
+        {% if val not in ['unknown','unavailable',''] %}
+          {{ as_timestamp(val) }}
+        {% else %}
+          0
+        {% endif %}
   - choose:
       - conditions:
           - condition: template
             value_template: >
-              {{ preheat_start_ts is not none
-                 and preheat_start_ts != stored_preheat_ts }}
+              {{ preheat_start_ts is not none and preheat_start_ts != stored_preheat_ts }}
         sequence:
           - service: input_datetime.set_datetime
             target:
@@ -195,20 +190,21 @@ action:
   # 🧠 Apprentissage
   - choose:
       - conditions:
-          - condition: trigger
-            id: learning
+          - condition: template
+            value_template: >
+              {{ states(input.temperature_sensor) | float(0)
+                 > states(input.comfort_temperature_number) | float(0)
+                 and stored_preheat_ts > 0 }}
         sequence:
           - variables:
-              age_min: >
-                {{ (now().timestamp() - stored_preheat_ts) / 60
-                   if stored_preheat_ts > 0 else 0 }}
+              age_min: "{{ (now().timestamp() - stored_preheat_ts) / 60 }}"
               factor: "{{ states(input.learning_factor) | float(1) }}"
           - service: input_number.set_value
             target:
               entity_id: !input learning_factor
             data:
               value: >
-                {% if stored_preheat_ts == 0 or age_min > 360 %}
+                {% if age_min > 360 %}
                   {{ factor | round(2) }}
                 {% elif age_min > 5 %}
                   {{ [factor * 0.98, 0.7] | max | round(2) }}
