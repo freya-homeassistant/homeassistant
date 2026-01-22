@@ -85,6 +85,27 @@ blueprint:
             - eco
             - boost
 
+    comfort_temperature_number:
+      name: Température preset comfort (number)
+      description: "Entité number exposée par Versatile Thermostat (ex: number.central_configuration_preset_comfort_temp)"
+      selector:
+        entity:
+          domain: number
+
+    eco_temperature_number:
+      name: Température preset eco (number)
+      description: "Entité number exposée par Versatile Thermostat"
+      selector:
+        entity:
+          domain: number
+
+    boost_temperature_number:
+      name: Température preset boost (number)
+      description: "Entité number exposée par Versatile Thermostat"
+      selector:
+        entity:
+          domain: number
+
     earliest_start:
       name: Heure minimale de démarrage
       default: "05:00:00"
@@ -113,7 +134,16 @@ trigger:
         {% set rate_raw = states(input.inertia_sensor) %}
         {% set rate = (rate_raw | replace(',', '.')) | float(0) %}
         {% set temp_actuelle = states(input.temperature_sensor) | float(0) %}
-        {% set consigne = state_attr(input.thermostat, 'temperature') | float(0) %}
+        {% set preset = input.presence_preset_on %}
+        {% if preset == 'comfort' %}
+          {% set consigne = states(input.comfort_temperature_number) | float(0) %}
+        {% elif preset == 'eco' %}
+          {% set consigne = states(input.eco_temperature_number) | float(0) %}
+        {% elif preset == 'boost' %}
+          {% set consigne = states(input.boost_temperature_number) | float(0) %}
+        {% else %}
+          {% set consigne = state_attr(input.thermostat, 'temperature') | float(0) %}
+        {% endif %}
         {% set delta = consigne - temp_actuelle %}
         {% set max_i = input.max_inertia | int %}
         {% if rate > 0 and delta > 0 %}
@@ -176,7 +206,16 @@ action:
           - condition: template
             value_template: >
               {% set temp_actuelle = states(input.temperature_sensor) | float %}
-              {% set consigne = state_attr(input.thermostat, 'temperature') | float %}
+              {% set preset = input.presence_preset_on %}
+              {% if preset == 'comfort' %}
+                {% set consigne = states(input.comfort_temperature_number) | float(0) %}
+              {% elif preset == 'eco' %}
+                {% set consigne = states(input.eco_temperature_number) | float(0) %}
+              {% elif preset == 'boost' %}
+                {% set consigne = states(input.boost_temperature_number) | float(0) %}
+              {% else %}
+                {% set consigne = state_attr(input.thermostat, 'temperature') | float(0) %}
+              {% endif %}
               {{ temp_actuelle < (consigne - 0.2) }}
         sequence:
           - service: climate.set_preset_mode

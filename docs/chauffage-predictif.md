@@ -64,6 +64,21 @@ Ce blueprint pilote un thermostat (typiquement _Versatile Thermostat_) via des `
 
   - Exemple: `comfort`, `eco`, `boost`.
 
+- **Température preset comfort (number)** (`comfort_temperature_number`)
+
+  - Entité `number` (ex: `number.central_configuration_preset_comfort_temp`).
+  - Sert à déterminer la consigne lorsque `presence_preset_on = comfort`.
+
+- **Température preset eco (number)** (`eco_temperature_number`)
+
+  - Entité `number` exposée par Versatile Thermostat.
+  - Sert à déterminer la consigne lorsque `presence_preset_on = eco`.
+
+- **Température preset boost (number)** (`boost_temperature_number`)
+
+  - Entité `number` exposée par Versatile Thermostat.
+  - Sert à déterminer la consigne lorsque `presence_preset_on = boost`.
+
 - **Heure minimale de démarrage** (`earliest_start`)
 
   - Heure après laquelle le préchauffage est autorisé (défaut `05:00:00`).
@@ -82,6 +97,7 @@ Ce blueprint pilote un thermostat (typiquement _Versatile Thermostat_) via des `
   - Récupère `start_time` du calendrier de présence.
   - Calcule une durée d’anticipation en minutes à partir du taux de chauffe:
     - `rate = sensor(inertia_sensor)` en °C/min
+    - `consigne` est récupérée depuis les entités `number` des presets (comfort/eco/boost) en fonction de `presence_preset_on`
     - `delta = consigne - temp_int`
     - `minutes_needed = ceil(delta / rate)`
     - `minutes = min(minutes_needed, max_inertia)`
