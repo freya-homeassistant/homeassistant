@@ -151,7 +151,7 @@ trigger:
           {% set minutes = [minutes_needed, max_i] | min %}
           {{ as_timestamp(now()) >= (as_timestamp(cible) - (minutes * 60)) }}
         {% else %}
-          {{ as_timestamp(now()) >= as_timestamp(cible) }}
+          {{ as_timestamp(now()) >= as_timestamp(cible) - 60 * 60 }}
         {% endif %}
       {% else %}
         false
