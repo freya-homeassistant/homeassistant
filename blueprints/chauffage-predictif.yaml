@@ -254,9 +254,9 @@ action:
                       {{ (input.preheat_start_time_number | default('')) != '' }}
                 sequence:
                   - service: input_number.set_value
-                    target:
-                      entity_id: !input preheat_start_time_number
                     data:
+                      entity_id: >
+                        {{ input.preheat_start_time_number | default('') }}
                       value: >
                         {{ (preheat_start_ts | int(0)) }}
           - service: climate.set_preset_mode
