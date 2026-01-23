@@ -85,6 +85,11 @@ trigger:
   - platform: state
     entity_id: !input calendrier_presence
 
+  - plarforme: state
+    entity_id: !input calendrier_presence
+    from: "on"
+    to: "off"
+
   - platform: state
     entity_id: !input heure_prochaine_chauffe
 
