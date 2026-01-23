@@ -84,7 +84,7 @@ blueprint:
 
     temps_inertie_minutes:
       name: Temps d'inertie (minutes)
-      description: "Temps minimum d'anticipation si la prédiction ne peut pas être calculée (ex: vitesse=0). Mettre 0 pour appliquer strictement l'heure du calendrier."
+      description: "Temps minimum d'anticipation si la prédiction ne peut pas être calculée (ex. vitesse=0). Mettre 0 pour appliquer strictement l'heure du calendrier."
       default: 0
       selector:
         number:
