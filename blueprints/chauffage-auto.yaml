@@ -111,6 +111,17 @@ action:
       - conditions:
           - condition: template
             value_template: >
+              {{ is_state(calendrier_presence_entity, 'off') and preset_mode_current != preset_eco_value }}
+        sequence:
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              preset_mode: "{{ preset_eco_value }}"
+
+      - conditions:
+          - condition: template
+            value_template: >
               {{ comfort_window and preset_mode_current != desired_preset }}
         sequence:
           - service: climate.set_preset_mode
