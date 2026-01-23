@@ -109,17 +109,28 @@ action:
       current_preset: >
         {{ state_attr(thermostat_entity, 'preset_mode') }}
 
+      current_hvac_mode: >
+        {{ states(thermostat_entity) }}
+
   - condition: template
     value_template: >
       {{ current_preset != desired_preset or (ha_restarted | bool) }}
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ current_hvac_mode != 'heat' }}
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              hvac_mode: "heat"
+          - delay: "00:00:01"
 
   - service: climate.set_preset_mode
     target:
       entity_id: !input thermostat
     data:
       preset_mode: "{{ desired_preset }}"
-  - service: climate.set_hvac_mode
-    target:
-      entity_id: !input thermostat
-    data:
-      hvac_mode: "heat"
