@@ -57,6 +57,17 @@ blueprint:
         entity:
           domain: input_datetime
 
+    watchdog_interval_minutes:
+      name: Intervalle de vérification (minutes)
+      description: Fréquence de re-vérification du preset (sécurité). 1 = toutes les minutes.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 60
+          step: 1
+          mode: box
+
 mode: single
 
 variables:
@@ -66,13 +77,15 @@ variables:
   heure_prochaine_chauffe_entity: !input heure_prochaine_chauffe
   preset_confort_value: !input preset_confort
   preset_eco_value: !input preset_eco
+  watchdog_interval_minutes_value: !input watchdog_interval_minutes
 
 trigger:
   - platform: homeassistant
     event: start
 
-  - platform: time_pattern
-    minutes: "/1"
+  - platform: template
+    value_template: >
+      {{ now().second == 0 and (now().minute % watchdog_interval_minutes_value) == 0 }}
 
   - platform: template
     value_template: >
