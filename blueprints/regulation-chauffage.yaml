@@ -85,7 +85,7 @@ blueprint:
     temps_inertie_minutes:
       name: Temps d'inertie (minutes)
       description: "Temps minimum d'anticipation si la prédiction ne peut pas être calculée (ex. vitesse=0). Mettre 0 pour appliquer strictement l'heure du calendrier."
-      default: 0
+      default: 30
       selector:
         number:
           min: 0
@@ -169,7 +169,7 @@ action:
 
           - condition: template
             value_template: >
-              {{ delta > 0 and debut_presence is not none and now().timestamp() >= (debut_presence - temps_necessaire) }}
+              {{ debut_presence is not none and now().timestamp() >= (debut_presence - temps_necessaire) }}
 
           - condition: template
             value_template: >
