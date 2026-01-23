@@ -1,0 +1,120 @@
+blueprint:
+  name: Chauffage – Automatisation (Confort selon heure calculée)
+  description: >
+    Pilote un Versatile Thermostat en fonction d'un calendrier de présence/absence et
+    d'une heure de démarrage calculée (input_datetime) : passage en preset Confort à
+    l'heure prévue, et maintien/retour en preset Éco en dehors de la fenêtre ou en absence.
+  domain: automation
+  input:
+    thermostat:
+      name: Thermostat Versatile
+      selector:
+        entity:
+          domain: climate
+
+    calendrier_presence:
+      name: Calendrier Présence
+      selector:
+        entity:
+          domain: calendar
+
+    calendrier_absence:
+      name: Calendrier Absence
+      selector:
+        entity:
+          domain: calendar
+
+    preset_confort:
+      name: Preset Confort
+      default: comfort
+      selector:
+        select:
+          options:
+            - label: "Eco"
+              value: eco
+            - label: "Comfort"
+              value: comfort
+            - label: "Eco"
+              value: eco
+
+    preset_eco:
+      name: Preset Éco
+      default: eco
+      selector:
+        select:
+          options:
+            - label: "Eco"
+              value: eco
+            - label: "Comfort"
+              value: comfort
+            - label: "Eco"
+              value: eco
+
+    heure_prochaine_chauffe:
+      name: Calendrier prochaine chauffe
+      description: Calendrier de l'heure calculée de la prochaine chauffe.
+      selector:
+        entity:
+          domain: input_datetime
+
+mode: single
+
+trigger:
+  - platform: homeassistant
+    event: start
+
+  - platform: template
+    value_template: >
+      {% set ts_start = today_at(states(input.heure_prochaine_chauffe)) %}
+      {% set ts_end = as_datetime(state_attr(input.calendrier_presence, 'end_time')) %}
+      {{ is_state(input.calendrier_presence, 'on') and ts_end and now() >= ts_start and now() < ts_end }}
+
+  - platform: template
+    value_template: >
+      {% set ts_end = as_datetime(state_attr(input.calendrier_presence, 'end_time')) %}
+      {{ is_state(input.calendrier_presence, 'on') and ts_end and now() >= ts_end }}
+
+  - platform: state
+    entity_id: !input calendrier_presence
+
+  - platform: state
+    entity_id: !input heure_prochaine_chauffe
+
+  - platform: state
+    entity_id: !input calendrier_absence
+
+condition:
+  - condition: state
+    entity_id: !input calendrier_absence
+    state: "off"
+
+action:
+  - variables:
+      comfort_window: >
+        {% set ts_start = today_at(states(input.heure_prochaine_chauffe)) %}
+        {% set ts_end = as_datetime(state_attr(input.calendrier_presence, 'end_time')) %}
+        {{ is_state(input.calendrier_presence, 'on') and ts_end and now() >= ts_start and now() < ts_end }}
+      desired_preset: >
+        {{ input.preset_comfort if comfort_window else input.preset_eco }}
+      preset_mode_current: >
+        {{ state_attr(input.thermostat, 'preset_mode') }}
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ comfort_window and preset_mode_current != desired_preset }}
+        sequence:
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              preset_mode: "{{ input.preset_comfort }}"
+    default:
+      - condition: template
+        value_template: "{{ not comfort_window and preset_mode_current != desired_preset }}"
+      - service: climate.set_preset_mode
+        target:
+          entity_id: !input thermostat
+        data:
+          preset_mode: "{{ input.preset_eco }}"
