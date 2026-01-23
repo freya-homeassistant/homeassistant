@@ -82,12 +82,12 @@ condition:
     state: "off"
 
 action:
-  - choose:
-      - conditions:
-          - condition: trigger
-            id: ha_start
-        sequence:
-          - delay: "00:02:00"
+  # - choose:
+  #     - conditions:
+  #         - condition: trigger
+  #           id: ha_start
+  #       sequence:
+  #         - delay: "00:02:00"
 
   - variables:
       ha_restarted: >
@@ -111,7 +111,7 @@ action:
 
   - condition: template
     value_template: >
-      {{ current_preset != desired_preset or ha_restarted == 'True' }}
+      {{ current_preset != desired_preset or (ha_restarted | bool) }}
 
   - service: climate.set_preset_mode
     target:
