@@ -59,20 +59,28 @@ blueprint:
 
 mode: single
 
+variables:
+  thermostat_entity: !input thermostat
+  calendrier_presence_entity: !input calendrier_presence
+  calendrier_absence_entity: !input calendrier_absence
+  heure_prochaine_chauffe_entity: !input heure_prochaine_chauffe
+  preset_confort_value: !input preset_confort
+  preset_eco_value: !input preset_eco
+
 trigger:
   - platform: homeassistant
     event: start
 
   - platform: template
     value_template: >
-      {% set ts_start = today_at(states(input.heure_prochaine_chauffe)) %}
-      {% set ts_end = as_datetime(state_attr(input.calendrier_presence, 'end_time')) %}
-      {{ is_state(input.calendrier_presence, 'on') and ts_end and now() >= ts_start and now() < ts_end }}
+      {% set ts_start = today_at(states(heure_prochaine_chauffe_entity)) %}
+      {% set ts_end = as_datetime(state_attr(calendrier_presence_entity, 'end_time')) %}
+      {{ is_state(calendrier_presence_entity, 'on') and ts_end and now() >= ts_start and now() < ts_end }}
 
   - platform: template
     value_template: >
-      {% set ts_end = as_datetime(state_attr(input.calendrier_presence, 'end_time')) %}
-      {{ is_state(input.calendrier_presence, 'on') and ts_end and now() >= ts_end }}
+      {% set ts_end = as_datetime(state_attr(calendrier_presence_entity, 'end_time')) %}
+      {{ is_state(calendrier_presence_entity, 'on') and ts_end and now() >= ts_end }}
 
   - platform: state
     entity_id: !input calendrier_presence
@@ -91,13 +99,13 @@ condition:
 action:
   - variables:
       comfort_window: >
-        {% set ts_start = today_at(states(input.heure_prochaine_chauffe)) %}
-        {% set ts_end = as_datetime(state_attr(input.calendrier_presence, 'end_time')) %}
-        {{ is_state(input.calendrier_presence, 'on') and ts_end and now() >= ts_start and now() < ts_end }}
+        {% set ts_start = today_at(states(heure_prochaine_chauffe_entity)) %}
+        {% set ts_end = as_datetime(state_attr(calendrier_presence_entity, 'end_time')) %}
+        {{ is_state(calendrier_presence_entity, 'on') and ts_end and now() >= ts_start and now() < ts_end }}
       desired_preset: >
-        {{ input.preset_comfort if comfort_window else input.preset_eco }}
+        {{ preset_confort_value if comfort_window else preset_eco_value }}
       preset_mode_current: >
-        {{ state_attr(input.thermostat, 'preset_mode') }}
+        {{ state_attr(thermostat_entity, 'preset_mode') }}
 
   - choose:
       - conditions:
@@ -109,7 +117,7 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              preset_mode: "{{ input.preset_comfort }}"
+              preset_mode: "{{ preset_confort_value }}"
     default:
       - condition: template
         value_template: "{{ not comfort_window and preset_mode_current != desired_preset }}"
@@ -117,4 +125,4 @@ action:
         target:
           entity_id: !input thermostat
         data:
-          preset_mode: "{{ input.preset_eco }}"
+          preset_mode: "{{ preset_eco_value }}"
