@@ -84,9 +84,11 @@ blueprint:
 
 trigger:
   - platform: time_pattern
+    id: time_pattern
     minutes: "/5"
 
   - platform: state
+    id: state
     entity_id: !input calendrier_presence
     from: "on"
     to: "off"
