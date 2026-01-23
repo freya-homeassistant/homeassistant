@@ -1,0 +1,177 @@
+blueprint:
+  name: VTherm – Prédiction de chauffe auto-apprenante (Présence / Absence)
+  description: >
+    Anticipe le passage en preset Confort d’un Versatile Thermostat
+    en fonction de la température actuelle, de la météo extérieure,
+    d’un calendrier de présence et d’un calendrier d’absence.
+    Retour automatique en Eco à la fin de la présence.
+    Utilise des paramètres auto-appris (input_number).
+  domain: automation
+  input:
+    thermostat:
+      name: Thermostat Versatile
+      selector:
+        entity:
+          domain: climate
+
+    calendrier_presence:
+      name: Calendrier Présence
+      selector:
+        entity:
+          domain: calendar
+
+    calendrier_absence:
+      name: Calendrier Absence
+      selector:
+        entity:
+          domain: calendar
+
+    temperature_exterieure:
+      name: Capteur température extérieure
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+
+    preset_confort:
+      name: Preset Confort
+      default: comfort
+      selector:
+        select:
+          options:
+            - label: "Eco"
+              value: eco
+            - label: "Comfort"
+              value: comfort
+            - label: "Eco"
+              value: eco
+
+    preset_eco:
+      name: Preset Éco
+      default: eco
+      selector:
+        select:
+          options:
+            - label: "Eco"
+              value: eco
+            - label: "Comfort"
+              value: comfort
+            - label: "Eco"
+              value: eco
+
+    vitesse_chauffe_apprise:
+      name: Vitesse de chauffe apprise
+      description: input_number mis à jour automatiquement
+      selector:
+        entity:
+          domain: input_number
+
+    influence_froid_apprise:
+      name: Influence du froid apprise
+      description: input_number mis à jour automatiquement
+      selector:
+        entity:
+          domain: input_number
+
+    seuil_temperature_froid:
+      name: Seuil météo neutre (°C)
+      default: 15
+      selector:
+        number:
+          min: 0
+          max: 20
+          step: 1
+
+trigger:
+  - platform: time_pattern
+    minutes: "/5"
+
+  - platform: state
+    entity_id: !input calendrier_presence
+    from: "on"
+    to: "off"
+
+mode: single
+
+action:
+  - choose:
+      # 🔥 ANTICIPATION CHAUFFE
+      - conditions:
+          - condition: trigger
+            id: time_pattern
+
+          - condition: state
+            entity_id: !input calendrier_presence
+            state: "on"
+
+          - condition: state
+            entity_id: !input calendrier_absence
+            state: "off"
+
+        sequence:
+          - variables:
+              temp_actuelle: >
+                {{ state_attr(!input thermostat, 'current_temperature') | float }}
+
+              temp_cible: >
+                {{ state_attr(!input thermostat, 'temperature') | float }}
+
+              temp_ext: >
+                {{ states(!input temperature_exterieure) | float }}
+
+              vitesse: >
+                {{ states(!input vitesse_chauffe_apprise) | float }}
+
+              facteur: >
+                {{ states(!input influence_froid_apprise) | float }}
+
+              delta: "{{ temp_cible - temp_actuelle }}"
+
+              correction_froid: >
+                {% set seuil = !input seuil_temperature_froid %}
+                {{ (seuil - temp_ext) * facteur if temp_ext < seuil else 0 }}
+
+              temps_necessaire: >
+                {{ ((delta / vitesse) + correction_froid) * 3600 }}
+
+              debut_presence: >
+                {{ as_timestamp(state_attr(!input calendrier_presence, 'start_time')) }}
+
+          - condition: template
+            value_template: >
+              {{ delta > 0 and now().timestamp() >= (debut_presence - temps_necessaire) }}
+
+          - condition: template
+            value_template: >
+              {{ state_attr(!input thermostat, 'preset_mode') != !input preset_confort }}
+
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              preset_mode: !input preset_confort
+
+      # 🌙 RETOUR ÉCO FIN DE PRÉSENCE
+      - conditions:
+          - condition: trigger
+            id: state
+
+          - condition: state
+            entity_id: !input calendrier_absence
+            state: "off"
+
+        sequence:
+          - condition: template
+            value_template: >
+              {{ state_attr(!input thermostat, 'preset_mode') != !input preset_eco }}
+
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              preset_mode: !input preset_eco
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              hvac_mode: "heat"
