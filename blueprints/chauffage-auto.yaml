@@ -1,13 +1,13 @@
 blueprint:
-  name: Chauffage – Automatisation (Confort selon heure calculée)
+  name: Chauffage – Confort selon heure calculée (événementiel)
   description: >
-    Pilote un Versatile Thermostat en fonction d'un calendrier de présence/absence et
-    d'une heure de démarrage calculée (input_datetime) : passage en preset Confort à
-    l'heure prévue, et maintien/retour en preset Éco en dehors de la fenêtre ou en absence.
+    Applique automatiquement le preset Confort ou Éco sur un thermostat
+    selon un calendrier de présence et une heure de démarrage calculée.
+    Le preset est ré-appliqué après redémarrage de Home Assistant.
   domain: automation
   input:
     thermostat:
-      name: Thermostat Versatile
+      name: Thermostat
       selector:
         entity:
           domain: climate
@@ -24,15 +24,19 @@ blueprint:
         entity:
           domain: calendar
 
+    heure_prochaine_chauffe:
+      name: Heure de démarrage Confort
+      selector:
+        entity:
+          domain: input_datetime
+
     preset_confort:
       name: Preset Confort
       default: comfort
       selector:
         select:
           options:
-            - label: "Eco"
-              value: eco
-            - label: "Comfort"
+            - label: "Confort"
               value: comfort
             - label: "Eco"
               value: eco
@@ -45,28 +49,8 @@ blueprint:
           options:
             - label: "Eco"
               value: eco
-            - label: "Comfort"
+            - label: "Confort"
               value: comfort
-            - label: "Eco"
-              value: eco
-
-    heure_prochaine_chauffe:
-      name: Calendrier prochaine chauffe
-      description: Calendrier de l'heure calculée de la prochaine chauffe.
-      selector:
-        entity:
-          domain: input_datetime
-
-    watchdog_interval_minutes:
-      name: Intervalle de vérification (minutes)
-      description: Fréquence de re-vérification du preset (sécurité). 1 = toutes les minutes.
-      default: 5
-      selector:
-        number:
-          min: 1
-          max: 60
-          step: 1
-          mode: box
 
 mode: single
 
@@ -77,43 +61,20 @@ variables:
   heure_prochaine_chauffe_entity: !input heure_prochaine_chauffe
   preset_confort_value: !input preset_confort
   preset_eco_value: !input preset_eco
-  watchdog_interval_minutes_value: !input watchdog_interval_minutes
 
 trigger:
   - platform: homeassistant
     event: start
-
-  - platform: template
-    value_template: >
-      {{ now().second == 0 and (now().minute % watchdog_interval_minutes_value) == 0 }}
-
-  - platform: template
-    value_template: >
-      {% set start_raw = states(heure_prochaine_chauffe_entity) %}
-      {% set ts_start = start_raw not in ['unknown', 'unavailable', 'none', ''] and as_local(today_at(start_raw)) or none %}
-      {% set end_raw = state_attr(calendrier_presence_entity, 'end_time') %}
-      {% set ts_end = end_raw and as_local(as_datetime(end_raw)) or none %}
-      {{ is_state(calendrier_presence_entity, 'on') and ts_start and ts_end and now() >= ts_start and now() < ts_end }}
-
-  - platform: template
-    value_template: >
-      {% set end_raw = state_attr(calendrier_presence_entity, 'end_time') %}
-      {% set ts_end = end_raw and as_local(as_datetime(end_raw)) or none %}
-      {{ is_state(calendrier_presence_entity, 'on') and ts_end and now() >= ts_end }}
+    id: ha_start
 
   - platform: state
     entity_id: !input calendrier_presence
-
-  - platform: state
-    entity_id: !input calendrier_presence
-    from: "on"
-    to: "off"
-
-  - platform: state
-    entity_id: !input heure_prochaine_chauffe
 
   - platform: state
     entity_id: !input calendrier_absence
+
+  - platform: state
+    entity_id: !input heure_prochaine_chauffe
 
 condition:
   - condition: state
@@ -121,56 +82,37 @@ condition:
     state: "off"
 
 action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: ha_start
+        sequence:
+          - delay: "00:02:00"
+
   - variables:
       comfort_window: >
         {% set start_raw = states(heure_prochaine_chauffe_entity) %}
-        {% set ts_start = start_raw not in ['unknown', 'unavailable', 'none', ''] and as_local(today_at(start_raw)) or none %}
+        {% set ts_start = start_raw not in ['unknown', 'unavailable', 'none', '']
+             and as_local(today_at(start_raw)) or none %}
         {% set end_raw = state_attr(calendrier_presence_entity, 'end_time') %}
         {% set ts_end = end_raw and as_local(as_datetime(end_raw)) or none %}
-        {{ is_state(calendrier_presence_entity, 'on') and ts_start and ts_end and now() >= ts_start and now() < ts_end }}
+        {{ is_state(calendrier_presence_entity, 'on')
+           and ts_start and ts_end
+           and now() >= ts_start
+           and now() < ts_end }}
+
       desired_preset: >
         {{ preset_confort_value if comfort_window else preset_eco_value }}
-      preset_mode_current: >
+
+      current_preset: >
         {{ state_attr(thermostat_entity, 'preset_mode') }}
 
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ is_state(calendrier_presence_entity, 'off') and preset_mode_current != preset_eco_value }}
-        sequence:
-          - service: climate.set_preset_mode
-            target:
-              entity_id: !input thermostat
-            data:
-              preset_mode: "{{ preset_eco_value }}"
+  - condition: template
+    value_template: >
+      {{ current_preset != desired_preset }}
 
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ is_state(calendrier_presence_entity, 'on') and preset_mode_current != preset_confort_value }}
-        sequence:
-          - service: climate.set_preset_mode
-            target:
-              entity_id: !input thermostat
-            data:
-              preset_mode: "{{ preset_confort_value }}"
-
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ comfort_window and preset_mode_current != desired_preset }}
-        sequence:
-          - service: climate.set_preset_mode
-            target:
-              entity_id: !input thermostat
-            data:
-              preset_mode: "{{ preset_confort_value }}"
-    default:
-      - condition: template
-        value_template: "{{ not comfort_window and preset_mode_current != desired_preset }}"
-      - service: climate.set_preset_mode
-        target:
-          entity_id: !input thermostat
-        data:
-          preset_mode: "{{ preset_eco_value }}"
+  - service: climate.set_preset_mode
+    target:
+      entity_id: !input thermostat
+    data:
+      preset_mode: "{{ desired_preset }}"
