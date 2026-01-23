@@ -73,13 +73,13 @@ trigger:
 
   - platform: template
     value_template: >
-      {% set ts_start = today_at(states(heure_prochaine_chauffe_entity)) %}
-      {% set ts_end = as_datetime(state_attr(calendrier_presence_entity, 'end_time')) %}
+      {% set ts_start = as_local(today_at(states(heure_prochaine_chauffe_entity))) %}
+      {% set ts_end = as_local(as_datetime(state_attr(calendrier_presence_entity, 'end_time'))) %}
       {{ is_state(calendrier_presence_entity, 'on') and ts_end and now() >= ts_start and now() < ts_end }}
 
   - platform: template
     value_template: >
-      {% set ts_end = as_datetime(state_attr(calendrier_presence_entity, 'end_time')) %}
+      {% set ts_end = as_local(as_datetime(state_attr(calendrier_presence_entity, 'end_time'))) %}
       {{ is_state(calendrier_presence_entity, 'on') and ts_end and now() >= ts_end }}
 
   - platform: state
@@ -99,8 +99,8 @@ condition:
 action:
   - variables:
       comfort_window: >
-        {% set ts_start = today_at(states(heure_prochaine_chauffe_entity)) %}
-        {% set ts_end = as_datetime(state_attr(calendrier_presence_entity, 'end_time')) %}
+        {% set ts_start = as_local(today_at(states(heure_prochaine_chauffe_entity))) %}
+        {% set ts_end = as_local(as_datetime(state_attr(calendrier_presence_entity, 'end_time'))) %}
         {{ is_state(calendrier_presence_entity, 'on') and ts_end and now() >= ts_start and now() < ts_end }}
       desired_preset: >
         {{ preset_confort_value if comfort_window else preset_eco_value }}
