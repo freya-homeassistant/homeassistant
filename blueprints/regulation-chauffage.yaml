@@ -105,6 +105,12 @@ trigger:
     minutes: "/5"
 
   - platform: state
+    id: absence_on
+    entity_id: !input calendrier_absence
+    from: "off"
+    to: "on"
+
+  - platform: state
     id: state
     entity_id: !input calendrier_presence
     from: "on"
@@ -114,6 +120,31 @@ mode: single
 
 action:
   - choose:
+      # 🚫 ABSENCE : FORCER ÉCO
+      - conditions:
+          - condition: trigger
+            id: absence_on
+
+        sequence:
+          - variables:
+              thermostat: !input thermostat
+              preset_eco_value: !input preset_eco
+
+          - condition: template
+            value_template: >
+              {{ state_attr(thermostat, 'preset_mode') != preset_eco_value }}
+
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              preset_mode: !input preset_eco
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              hvac_mode: "heat"
+
       # 🔥 ANTICIPATION CHAUFFE
       - conditions:
           - condition: trigger
@@ -216,10 +247,6 @@ action:
       - conditions:
           - condition: trigger
             id: state
-
-          - condition: state
-            entity_id: !input calendrier_absence
-            state: "off"
 
         sequence:
           - condition: template
