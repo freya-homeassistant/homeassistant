@@ -71,6 +71,9 @@ trigger:
   - platform: homeassistant
     event: start
 
+  - platform: time_pattern
+    minutes: "/1"
+
   - platform: template
     value_template: >
       {% set start_raw = states(heure_prochaine_chauffe_entity) %}
@@ -128,6 +131,17 @@ action:
               entity_id: !input thermostat
             data:
               preset_mode: "{{ preset_eco_value }}"
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ is_state(calendrier_presence_entity, 'on') and preset_mode_current != preset_confort_value }}
+        sequence:
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              preset_mode: "{{ preset_confort_value }}"
 
       - conditions:
           - condition: template
