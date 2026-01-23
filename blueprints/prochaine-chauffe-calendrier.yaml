@@ -1,0 +1,117 @@
+blueprint:
+  name: Chauffage – Calcul prochaine chauffe (calendrier de présence)
+  description: >
+    Calcule l'heure de la prochaine chauffe à partir d'un calendrier de présence
+    et la stocke dans un input_datetime.
+  domain: automation
+  input:
+    calendrier_presence:
+      name: Calendrier Présence
+      selector:
+        entity:
+          domain: calendar
+
+    prochaine_chauffe:
+      name: Stockage prochaine chauffe
+      description: input_datetime qui recevra l'heure calculée de la prochaine chauffe.
+      selector:
+        entity:
+          domain: input_datetime
+
+    anticipation_minutes:
+      name: Anticipation (minutes)
+      description: Décalage appliqué avant l'heure de début du prochain événement de présence.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 360
+          step: 5
+
+    heure_minimale:
+      name: Heure minimale autorisée
+      description: Si l'heure calculée est plus tôt dans la journée, elle est ramenée à cette heure.
+      default: "05:00:00"
+      selector:
+        time: {}
+
+mode: single
+
+trigger:
+  - platform: homeassistant
+    event: start
+
+  - platform: time_pattern
+    minutes: "/5"
+
+  - platform: state
+    entity_id: !input calendrier_presence
+
+action:
+  - variables:
+      calendrier_presence_entity: !input calendrier_presence
+      prochaine_chauffe_entity: !input prochaine_chauffe
+      anticipation_minutes_value: !input anticipation_minutes
+      heure_minimale_value: !input heure_minimale
+
+  - service: calendar.get_events
+    target:
+      entity_id: !input calendrier_presence
+    data:
+      start_date_time: "{{ now().isoformat() }}"
+      end_date_time: "{{ (now() + timedelta(days=7)).isoformat() }}"
+    response_variable: presence_events
+
+  - variables:
+      next_event_start: >
+        {% set payload = presence_events.get(calendrier_presence_entity) %}
+        {% if payload is none %}
+          {{ none }}
+        {% else %}
+          {% set evts = payload.get('events', []) %}
+          {% if evts | length == 0 %}
+            {{ none }}
+          {% else %}
+            {{ evts[0].get('start') }}
+          {% endif %}
+        {% endif %}
+
+      debut_presence: >
+        {{ as_timestamp(next_event_start, default=none) }}
+
+      ts_calcule: >
+        {% if debut_presence is none %}
+          {{ none }}
+        {% else %}
+          {{ (debut_presence - (anticipation_minutes_value | float(0) * 60)) | int }}
+        {% endif %}
+
+      ts_min: >
+        {{ today_at(heure_minimale_value) | as_timestamp }}
+
+      ts_final: >
+        {% if ts_calcule is none %}
+          {{ none }}
+        {% else %}
+          {{ [ts_calcule, ts_min] | max | int }}
+        {% endif %}
+
+      stored_ts: >
+        {% set val = states(prochaine_chauffe_entity) %}
+        {% if val in ['unknown','unavailable',''] %}
+          {{ none }}
+        {% else %}
+          {{ as_timestamp(val, default=none) }}
+        {% endif %}
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ ts_final is not none and (stored_ts is none or (ts_final | int) != (stored_ts | int)) }}
+        sequence:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input prochaine_chauffe
+            data:
+              timestamp: "{{ ts_final }}"
