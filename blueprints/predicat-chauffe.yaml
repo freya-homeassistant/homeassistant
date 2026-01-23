@@ -5,6 +5,34 @@ blueprint:
     et la stocke dans un input_datetime.
   domain: automation
   input:
+    thermostat:
+      name: Thermostat Versatile
+      selector:
+        entity:
+          domain: climate
+
+    slope_sensor:
+      name: Slope VT (°C/h)
+      selector:
+        entity:
+          domain: sensor
+
+    consigne_confort:
+      name: Consigne confort
+      selector:
+        entity:
+          domain: number
+
+    inertie_max_minutes:
+      name: Inertie max (minutes)
+      description: Limite l'anticipation maximale calculée à partir du slope.
+      default: 180
+      selector:
+        number:
+          min: 0
+          max: 600
+          step: 5
+
     calendrier_presence:
       name: Calendrier Présence
       selector:
@@ -17,23 +45,6 @@ blueprint:
       selector:
         entity:
           domain: input_datetime
-
-    anticipation_minutes:
-      name: Anticipation (minutes)
-      description: Décalage appliqué avant l'heure de début du prochain événement de présence.
-      default: 30
-      selector:
-        number:
-          min: 0
-          max: 360
-          step: 5
-
-    heure_minimale:
-      name: Heure minimale autorisée
-      description: Si l'heure calculée est plus tôt dans la journée, elle est ramenée à cette heure.
-      default: "05:00:00"
-      selector:
-        time: {}
 
 mode: single
 
@@ -49,10 +60,12 @@ trigger:
 
 action:
   - variables:
+      thermostat_entity: !input thermostat
+      slope_sensor_entity: !input slope_sensor
+      consigne_confort_entity: !input consigne_confort
+      inertie_max_minutes_value: !input inertie_max_minutes
       calendrier_presence_entity: !input calendrier_presence
       prochaine_chauffe_entity: !input prochaine_chauffe
-      anticipation_minutes_value: !input anticipation_minutes
-      heure_minimale_value: !input heure_minimale
 
   - service: calendar.get_events
     target:
@@ -79,21 +92,29 @@ action:
       debut_presence: >
         {{ as_timestamp(next_event_start, default=none) }}
 
-      ts_calcule: >
+      ts_final: >
         {% if debut_presence is none %}
           {{ none }}
         {% else %}
-          {{ (debut_presence - (anticipation_minutes_value | float(0) * 60)) | int }}
-        {% endif %}
+          {% set temp_actuelle = state_attr(thermostat_entity, 'current_temperature') | float(0) %}
+          {% set temp_cible = states(consigne_confort_entity) | float(0) %}
+          {% set delta = (temp_cible - temp_actuelle) | float(0) %}
 
-      ts_min: >
-        {{ today_at(heure_minimale_value) | as_timestamp }}
+          {% set raw_slope = states(slope_sensor_entity) | replace(',', '.') | float(0) %}
+          {% set slope_per_min = (raw_slope / 60) if raw_slope > 0 else 0 %}
 
-      ts_final: >
-        {% if ts_calcule is none %}
-          {{ none }}
-        {% else %}
-          {{ [ts_calcule, ts_min] | max | int }}
+          {% if slope_per_min > 0 and delta > 0 %}
+            {% set minutes = (delta / slope_per_min) | round(0, 'ceil') %}
+          {% else %}
+            {% set minutes = 0 %}
+          {% endif %}
+
+          {% set max_i = inertie_max_minutes_value | int(0) %}
+          {% if max_i > 0 %}
+            {% set minutes = [minutes | int(0), max_i] | min %}
+          {% endif %}
+
+          {{ (debut_presence - (minutes | int(0) * 60)) | int }}
         {% endif %}
 
       stored_ts: >
