@@ -1,8 +1,9 @@
 blueprint:
-  name: Chauffage – Calcul prochaine chauffe (calendrier de présence)
+  name: Chauffage – Calcul prochaine chauffe (slope VT + calendrier de présence)
   description: >
-    Calcule l'heure de la prochaine chauffe à partir d'un calendrier de présence
-    et la stocke dans un input_datetime.
+    Calcule l'heure optimale de démarrage de chauffe à partir d'un calendrier de présence,
+    du slope (°C/h) d'un Versatile Thermostat et d'une consigne confort, puis la stocke
+    dans un input_datetime.
   domain: automation
   input:
     thermostat:
