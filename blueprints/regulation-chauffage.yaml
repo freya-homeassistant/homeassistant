@@ -82,6 +82,16 @@ blueprint:
           max: 20
           step: 1
 
+    temps_inertie_minutes:
+      name: Temps d'inertie (minutes)
+      description: Temps minimum d'anticipation si la prédiction ne peut pas être calculée (ex: vitesse=0). Mettre 0 pour appliquer strictement l'heure du calendrier.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 180
+          step: 5
+
 trigger:
   - platform: time_pattern
     id: time_pattern
@@ -120,6 +130,7 @@ action:
               preset_confort_value: !input preset_confort
               preset_eco_value: !input preset_eco
               seuil_temperature_froid_value: !input seuil_temperature_froid
+              temps_inertie_minutes_value: !input temps_inertie_minutes
 
               temp_actuelle: >
                 {{ state_attr(thermostat, 'current_temperature') | float }}
@@ -143,11 +154,14 @@ action:
                 {% set seuil = seuil_temperature_froid_value | float %}
                 {{ (seuil - temp_ext) * facteur if temp_ext < seuil else 0 }}
 
+              temps_inertie: >
+                {{ (temps_inertie_minutes_value | float(0)) * 60 }}
+
               temps_necessaire: >
                 {% if vitesse | float(0) > 0 %}
                   {{ [(((delta / vitesse) + correction_froid) * 3600), 0] | max }}
                 {% else %}
-                  {{ 0 }}
+                  {{ temps_inertie }}
                 {% endif %}
 
               debut_presence: >
