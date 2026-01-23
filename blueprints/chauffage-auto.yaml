@@ -90,6 +90,8 @@ action:
           - delay: "00:02:00"
 
   - variables:
+      ha_restarted: >
+        {{ trigger is defined and trigger.id == 'ha_start' }}
       comfort_window: >
         {% set start_raw = states(heure_prochaine_chauffe_entity) %}
         {% set ts_start = start_raw not in ['unknown', 'unavailable', 'none', '']
@@ -109,7 +111,7 @@ action:
 
   - condition: template
     value_template: >
-      {{ current_preset != desired_preset }}
+      {{ current_preset != desired_preset and not ha_restarted }}
 
   - service: climate.set_preset_mode
     target:
