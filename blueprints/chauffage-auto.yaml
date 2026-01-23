@@ -116,3 +116,8 @@ action:
       entity_id: !input thermostat
     data:
       preset_mode: "{{ desired_preset }}"
+  - service: climate.set_hvac_mode
+    target:
+      entity_id: !input thermostat
+    data:
+      hvac_mode: "heat"
