@@ -26,6 +26,13 @@ blueprint:
         entity:
           domain: calendar
 
+    heure_predite_chauffe:
+      name: Heure prédite de démarrage chauffe (optionnel)
+      description: input_datetime contenant l'heure de démarrage anticipée. Si renseignée, elle est utilisée en priorité à la place du calcul basé sur l'heure du calendrier.
+      selector:
+        entity:
+          domain: input_datetime
+
     temperature_exterieure:
       name: Capteur température extérieure
       selector:
@@ -113,10 +120,6 @@ action:
             id: time_pattern
 
           - condition: state
-            entity_id: !input calendrier_presence
-            state: "on"
-
-          - condition: state
             entity_id: !input calendrier_absence
             state: "off"
 
@@ -124,6 +127,7 @@ action:
           - variables:
               thermostat: !input thermostat
               calendrier_presence_entity: !input calendrier_presence
+              heure_predite_chauffe_entity: !input heure_predite_chauffe
               temperature_exterieure_entity: !input temperature_exterieure
               vitesse_chauffe_apprise_entity: !input vitesse_chauffe_apprise
               influence_froid_apprise_entity: !input influence_froid_apprise
@@ -167,9 +171,31 @@ action:
               debut_presence: >
                 {{ as_timestamp(state_attr(calendrier_presence_entity, 'start_time'), default=none) }}
 
+              demarrage_predite: >
+                {% set val = states(heure_predite_chauffe_entity) %}
+                {% if val in ['unknown','unavailable',''] %}
+                  {{ none }}
+                {% else %}
+                  {{ as_timestamp(val, default=none) }}
+                {% endif %}
+
+              demarrage_calculee: >
+                {{ none if debut_presence is none else (debut_presence - temps_necessaire) }}
+
+              demarrage_chauffe: >
+                {{ demarrage_predite if demarrage_predite is not none else demarrage_calculee }}
+
           - condition: template
             value_template: >
-              {{ debut_presence is not none and now().timestamp() >= (debut_presence - temps_necessaire) }}
+              {{ demarrage_chauffe is not none }}
+
+          - condition: template
+            value_template: >
+              {{ now().timestamp() >= demarrage_chauffe }}
+
+          - condition: template
+            value_template: >
+              {{ debut_presence is none or now().timestamp() < debut_presence }}
 
           - condition: template
             value_template: >
