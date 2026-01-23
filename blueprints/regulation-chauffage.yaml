@@ -110,32 +110,42 @@ action:
 
         sequence:
           - variables:
+              thermostat: !input thermostat
+              calendrier_presence_entity: !input calendrier_presence
+              calendrier_absence_entity: !input calendrier_absence
+              temperature_exterieure_entity: !input temperature_exterieure
+              vitesse_chauffe_apprise_entity: !input vitesse_chauffe_apprise
+              influence_froid_apprise_entity: !input influence_froid_apprise
+              preset_confort_value: !input preset_confort
+              preset_eco_value: !input preset_eco
+              seuil_temperature_froid_value: !input seuil_temperature_froid
+
               temp_actuelle: >
-                {{ state_attr(!input thermostat, 'current_temperature') | float }}
+                {{ state_attr(thermostat, 'current_temperature') | float }}
 
               temp_cible: >
-                {{ state_attr(!input thermostat, 'temperature') | float }}
+                {{ state_attr(thermostat, 'temperature') | float }}
 
               temp_ext: >
-                {{ states(!input temperature_exterieure) | float }}
+                {{ states(temperature_exterieure_entity) | float }}
 
               vitesse: >
-                {{ states(!input vitesse_chauffe_apprise) | float }}
+                {{ states(vitesse_chauffe_apprise_entity) | float }}
 
               facteur: >
-                {{ states(!input influence_froid_apprise) | float }}
+                {{ states(influence_froid_apprise_entity) | float }}
 
               delta: "{{ temp_cible - temp_actuelle }}"
 
               correction_froid: >
-                {% set seuil = !input seuil_temperature_froid %}
+                {% set seuil = seuil_temperature_froid_value | float %}
                 {{ (seuil - temp_ext) * facteur if temp_ext < seuil else 0 }}
 
               temps_necessaire: >
                 {{ ((delta / vitesse) + correction_froid) * 3600 }}
 
               debut_presence: >
-                {{ as_timestamp(state_attr(!input calendrier_presence, 'start_time')) }}
+                {{ as_timestamp(state_attr(calendrier_presence_entity, 'start_time')) }}
 
           - condition: template
             value_template: >
@@ -143,7 +153,7 @@ action:
 
           - condition: template
             value_template: >
-              {{ state_attr(!input thermostat, 'preset_mode') != !input preset_confort }}
+              {{ state_attr(thermostat, 'preset_mode') != preset_confort_value }}
 
           - service: climate.set_preset_mode
             target:
@@ -163,7 +173,7 @@ action:
         sequence:
           - condition: template
             value_template: >
-              {{ state_attr(!input thermostat, 'preset_mode') != !input preset_eco }}
+              {{ state_attr(thermostat, 'preset_mode') != preset_eco_value }}
 
           - service: climate.set_preset_mode
             target:
