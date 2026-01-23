@@ -111,7 +111,7 @@ action:
 
   - condition: template
     value_template: >
-      {{ current_preset != desired_preset and not ha_restarted }}
+      {{ current_preset != desired_preset or ha_restarted }}
 
   - service: climate.set_preset_mode
     target:
