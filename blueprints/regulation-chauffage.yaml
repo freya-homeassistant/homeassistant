@@ -216,13 +216,16 @@ action:
               demarrage_chauffe: >
                 {{ demarrage_predite if demarrage_predite is not none else demarrage_calculee }}
 
+              fenetre_declenchement: >
+                {{ 300 }}
+
           - condition: template
             value_template: >
               {{ demarrage_chauffe is not none }}
 
           - condition: template
             value_template: >
-              {{ now().timestamp() >= demarrage_chauffe }}
+              {{ now().timestamp() >= demarrage_chauffe and now().timestamp() < (demarrage_chauffe + fenetre_declenchement) }}
 
           - condition: template
             value_template: >
