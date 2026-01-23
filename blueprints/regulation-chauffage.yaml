@@ -114,7 +114,6 @@ action:
           - variables:
               thermostat: !input thermostat
               calendrier_presence_entity: !input calendrier_presence
-              calendrier_absence_entity: !input calendrier_absence
               temperature_exterieure_entity: !input temperature_exterieure
               vitesse_chauffe_apprise_entity: !input vitesse_chauffe_apprise
               influence_froid_apprise_entity: !input influence_froid_apprise
@@ -129,29 +128,34 @@ action:
                 {{ state_attr(thermostat, 'temperature') | float }}
 
               temp_ext: >
-                {{ states(temperature_exterieure_entity) | float }}
+                {{ states(temperature_exterieure_entity) | float(0) }}
 
               vitesse: >
-                {{ states(vitesse_chauffe_apprise_entity) | float }}
+                {{ states(vitesse_chauffe_apprise_entity) | float(0) }}
 
               facteur: >
-                {{ states(influence_froid_apprise_entity) | float }}
+                {{ states(influence_froid_apprise_entity) | float(0) }}
 
-              delta: "{{ temp_cible - temp_actuelle }}"
+              delta: >
+                {{ (temp_cible - temp_actuelle) | float(0) }}
 
               correction_froid: >
                 {% set seuil = seuil_temperature_froid_value | float %}
                 {{ (seuil - temp_ext) * facteur if temp_ext < seuil else 0 }}
 
               temps_necessaire: >
-                {{ ((delta / vitesse) + correction_froid) * 3600 }}
+                {% if vitesse | float(0) > 0 %}
+                  {{ [(((delta / vitesse) + correction_froid) * 3600), 0] | max }}
+                {% else %}
+                  {{ 0 }}
+                {% endif %}
 
               debut_presence: >
-                {{ as_timestamp(state_attr(calendrier_presence_entity, 'start_time')) }}
+                {{ as_timestamp(state_attr(calendrier_presence_entity, 'start_time'), default=none) }}
 
           - condition: template
             value_template: >
-              {{ delta > 0 and now().timestamp() >= (debut_presence - temps_necessaire) }}
+              {{ delta > 0 and debut_presence is not none and now().timestamp() >= (debut_presence - temps_necessaire) }}
 
           - condition: template
             value_template: >
@@ -162,6 +166,11 @@ action:
               entity_id: !input thermostat
             data:
               preset_mode: !input preset_confort
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              hvac_mode: "heat"
 
       # 🌙 RETOUR ÉCO FIN DE PRÉSENCE
       - conditions:
