@@ -39,6 +39,11 @@ blueprint:
       selector:
         entity:
           domain: calendar
+    calendrier_absence:
+      name: Calendrier Absence
+      selector:
+        entity:
+          domain: calendar
 
     prochaine_chauffe:
       name: Stockage prochaine chauffe
@@ -54,6 +59,11 @@ trigger:
     entity_id: !input calendrier_presence
     from: "on"
     to: "off"
+
+  - platform: state
+    entity_id: !input calendrier_absence
+    from: "off"
+    to: "on"
 
 action:
   - variables:
