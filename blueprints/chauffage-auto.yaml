@@ -133,17 +133,17 @@ action:
     value_template: >
       {{ current_preset != desired_preset or (ha_restarted | bool) }}
 
-  - service: climate.set_preset_mode
-    target:
-      entity_id: !input thermostat
-    data:
-      preset_mode: "{{ desired_preset }}"
-
   - service: climate.set_temperature
     target:
       entity_id: !input thermostat
     data:
       temperature: "{{ desired_temperature | float }}"
+
+  - service: climate.set_preset_mode
+    target:
+      entity_id: !input thermostat
+    data:
+      preset_mode: "{{ desired_preset }}"
 
   - service: climate.set_hvac_mode
     target:

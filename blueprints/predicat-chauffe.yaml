@@ -50,14 +50,10 @@ blueprint:
 mode: single
 
 trigger:
-  - platform: homeassistant
-    event: start
-
-  - platform: time_pattern
-    minutes: "/5"
-
   - platform: state
     entity_id: !input calendrier_presence
+    from: "on"
+    to: "off"
 
 action:
   - variables:
