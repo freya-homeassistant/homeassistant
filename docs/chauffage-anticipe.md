@@ -1,6 +1,6 @@
 # Chauffage – Anticipation intelligente VT (auto-apprentissage + météo)
 
-Blueprint: `blueprints/chauffage-anticipe.yaml`
+Blueprint: [`blueprints/chauffage-anticipe.yaml`](../blueprints/chauffage-anticipe.yaml)
 
 ## Objectif
 
