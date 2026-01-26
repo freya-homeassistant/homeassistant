@@ -1,0 +1,191 @@
+blueprint:
+  name: Chauffage – Anticipation intelligente VT (auto-apprentissage + météo)
+  description: >
+    Calcule l'heure optimale de démarrage de chauffe à partir :
+    - du calendrier de présence
+    - du slope (°C/h) du Versatile Thermostat
+    - d’un facteur de correction auto-apprenant par pièce
+    - d’une correction par température extérieure
+    - de la consigne confort
+    Puis stocke l'heure calculée dans un input_datetime.
+
+  domain: automation
+
+  input:
+    thermostat:
+      name: Thermostat Versatile
+      selector:
+        entity:
+          domain: climate
+
+    slope_sensor:
+      name: Slope VT utilisable (°C/h)
+      selector:
+        entity:
+          domain: sensor
+
+    consigne_confort:
+      name: Consigne confort
+      selector:
+        entity:
+          domain: number
+
+    facteur_chauffe:
+      name: Facteur de correction (auto-apprenant)
+      selector:
+        entity:
+          domain: input_number
+
+    temp_exterieure:
+      name: Température extérieure
+      selector:
+        entity:
+          domain: sensor
+
+    temp_ext_reference:
+      name: Température extérieure de référence (°C)
+      default: 10
+      selector:
+        number:
+          min: -10
+          max: 20
+          step: 1
+
+    coeff_ext:
+      name: Sensibilité température extérieure (% / °C)
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 1
+
+    inertie_max_minutes:
+      name: Anticipation maximale (minutes)
+      default: 180
+      selector:
+        number:
+          min: 0
+          max: 600
+          step: 5
+
+    inertie_min_minutes:
+      name: Anticipation minimale (minutes)
+      default: 15
+      selector:
+        number:
+          min: 0
+          max: 120
+          step: 5
+
+    calendrier_presence:
+      name: Calendrier Présence
+      selector:
+        entity:
+          domain: calendar
+
+    prochaine_chauffe:
+      name: Stockage prochaine chauffe
+      selector:
+        entity:
+          domain: input_datetime
+
+mode: single
+
+trigger:
+  - platform: state
+    entity_id: !input calendrier_presence
+    from: "on"
+    to: "off"
+
+  - platform: time_pattern
+    minutes: "/15"
+
+action:
+  - variables:
+      thermostat_entity: !input thermostat
+      slope_entity: !input slope_sensor
+      consigne_entity: !input consigne_confort
+      facteur_entity: !input facteur_chauffe
+      temp_ext_entity: !input temp_exterieure
+      temp_ext_ref: !input temp_ext_reference
+      coeff_ext_val: !input coeff_ext
+      inertie_max: !input inertie_max_minutes
+      inertie_min: !input inertie_min_minutes
+      prochaine_chauffe_entity: !input prochaine_chauffe
+      calendrier_entity: !input calendrier_presence
+
+  - service: calendar.get_events
+    target:
+      entity_id: !input calendrier_presence
+    data:
+      start_date_time: "{{ now().isoformat() }}"
+      end_date_time: "{{ (now() + timedelta(days=14)).isoformat() }}"
+    response_variable: presence_events
+
+  - variables:
+      next_event_start: >
+        {% set payload = presence_events.get(calendrier_entity) %}
+        {% if payload and payload.events | length > 0 %}
+          {{ payload.events[0].start }}
+        {% else %}
+          {{ none }}
+        {% endif %}
+
+      debut_presence: "{{ as_timestamp(next_event_start, default=none) }}"
+
+      ts_final: >
+        {% if debut_presence is none %}
+          {{ none }}
+        {% else %}
+          {% set temp_actuelle = state_attr(thermostat_entity,'current_temperature') | float(0) %}
+          {% set temp_cible = states(consigne_entity) | float(0) %}
+          {% set delta = temp_cible - temp_actuelle %}
+
+          {% set slope_h = states(slope_entity) | replace(',', '.') | float(0) %}
+          {% set slope_min = slope_h / 60 if slope_h > 0 else 0 %}
+
+          {% set facteur_base = states(facteur_entity) | float(1.2) %}
+
+          {% set temp_ext = states(temp_ext_entity) | float(temp_ext_ref) %}
+          {% set delta_ext = temp_ext_ref - temp_ext %}
+          {% if delta_ext > 0 %}
+            {% set facteur_ext = 1 + (delta_ext * coeff_ext_val / 100) %}
+          {% else %}
+            {% set facteur_ext = 1 %}
+          {% endif %}
+          {% set facteur_ext = [facteur_ext, 1.3] | min %}
+
+          {% set facteur = facteur_base * facteur_ext %}
+
+          {% if delta > 0 and slope_min > 0 %}
+            {% set minutes = (delta / slope_min * facteur) | round(0,'ceil') %}
+          {% else %}
+            {% set minutes = 0 %}
+          {% endif %}
+
+          {% set minutes = [minutes, inertie_min | int] | max %}
+          {% set minutes = [minutes, inertie_max | int] | min %}
+
+          {{ (debut_presence - minutes * 60) | int }}
+        {% endif %}
+
+      stored_ts: >
+        {% set val = states(prochaine_chauffe_entity) %}
+        {% if val not in ['unknown','unavailable',''] %}
+          {{ as_timestamp(val) }}
+        {% else %}
+          {{ none }}
+        {% endif %}
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ ts_final is not none and (stored_ts is none or ts_final | int != stored_ts | int) }}
+        sequence:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input prochaine_chauffe
+            data:
+              timestamp: "{{ ts_final }}"
