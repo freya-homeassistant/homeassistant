@@ -3,8 +3,9 @@ blueprint:
   description: >
     Applique automatiquement le preset Confort ou Éco sur un thermostat
     selon un calendrier de présence et une heure de démarrage calculée.
-    Le preset est ré-appliqué après redémarrage de Home Assistant.
+    Le preset et la consigne sont ré-appliqués après redémarrage de Home Assistant.
   domain: automation
+
   input:
     thermostat:
       name: Thermostat
@@ -91,9 +92,9 @@ trigger:
     entity_id: !input heure_prochaine_chauffe
 
 condition:
-  - condition: state
-    entity_id: !input calendrier_absence
-    state: "off"
+  - condition: template
+    value_template: >
+      {{ not is_state(calendrier_absence_entity, 'on') }}
 
 action:
   - choose:
@@ -106,14 +107,21 @@ action:
   - variables:
       ha_restarted: >
         {{ trigger is defined and trigger.id == 'ha_start' }}
+
+      ts_start: >
+        {% set raw = states(heure_prochaine_chauffe_entity) %}
+        {{ raw not in ['unknown', 'unavailable', 'none', '']
+           and as_local(as_datetime(raw))
+           or none }}
+
+      ts_end: >
+        {% set raw = state_attr(calendrier_presence_entity, 'end_time') %}
+        {{ raw and as_local(as_datetime(raw)) or none }}
+
       comfort_window: >
-        {% set start_raw = states(heure_prochaine_chauffe_entity) %}
-        {% set ts_start = start_raw not in ['unknown', 'unavailable', 'none', '']
-             and as_local(today_at(start_raw)) or none %}
-        {% set end_raw = state_attr(calendrier_presence_entity, 'end_time') %}
-        {% set ts_end = end_raw and as_local(as_datetime(end_raw)) or none %}
         {{ is_state(calendrier_presence_entity, 'on')
-           and ts_start and ts_end
+           and ts_start
+           and ts_end
            and now() >= ts_start
            and now() < ts_end }}
 
@@ -121,23 +129,21 @@ action:
         {{ preset_confort_value if comfort_window else preset_eco_value }}
 
       desired_temperature: >
-        {{ states(consigne_confort_value if comfort_window else consigne_eco_value) }}
+        {{ states(consigne_confort_value if comfort_window else consigne_eco_value) | float(0) }}
 
       current_preset: >
         {{ state_attr(thermostat_entity, 'preset_mode') }}
 
-      current_temperature: >
-        {{ state_attr(thermostat_entity, 'temperature') }}
-
   - condition: template
     value_template: >
-      {{ current_preset != desired_preset or (ha_restarted | bool) }}
+      {{ current_preset != desired_preset or ha_restarted }}
 
-  - service: climate.set_temperature
+  # Ordre sûr pour les thermostats
+  - service: climate.set_hvac_mode
     target:
       entity_id: !input thermostat
     data:
-      temperature: "{{ desired_temperature | float }}"
+      hvac_mode: heat
 
   - service: climate.set_preset_mode
     target:
@@ -145,8 +151,8 @@ action:
     data:
       preset_mode: "{{ desired_preset }}"
 
-  - service: climate.set_hvac_mode
+  - service: climate.set_temperature
     target:
       entity_id: !input thermostat
     data:
-      hvac_mode: "heat"
+      temperature: "{{ desired_temperature }}"
