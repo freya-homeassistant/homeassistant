@@ -171,7 +171,11 @@ action:
         {% endif %}
 
       stored_ts: >
-        {{ as_timestamp(states(prochaine_chauffe_entity), default=none) }}
+        {% if states(prochaine_chauffe_entity) in ['unknown','unavailable',''] %}
+          {{ none }}
+        {% else %}
+          {{ state_attr(prochaine_chauffe_entity, 'timestamp') }}
+        {% endif %}
 
   - choose:
       - conditions:
