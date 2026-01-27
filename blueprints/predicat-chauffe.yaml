@@ -125,11 +125,11 @@ action:
         {% endif %}
 
       stored_ts: >
-        {% set val = states(prochaine_chauffe_entity) %}
-        {% if val in ['unknown','unavailable',''] %}
+        {% set ent = prochaine_chauffe_entity %}
+        {% if states(ent) in ['unknown','unavailable',''] %}
           {{ none }}
         {% else %}
-          {{ as_timestamp(val, default=none) }}
+          {{ state_attr(ent, 'timestamp') }}
         {% endif %}
 
   - choose:
