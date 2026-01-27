@@ -114,6 +114,7 @@ action:
       inertie_min: !input inertie_min_minutes
       prochaine_chauffe_entity: !input prochaine_chauffe
       calendrier_entity: !input calendrier_presence
+      presence_active: "{{ is_state(calendrier_entity, 'on') }}"
 
   - service: calendar.get_events
     target:
@@ -126,10 +127,21 @@ action:
   - variables:
       next_event_start: >
         {% set payload = presence_events.get(calendrier_entity) %}
-        {% if payload and payload.events | length > 0 %}
-          {{ payload.events[0].start }}
-        {% else %}
+        {% if not payload or payload.events | length == 0 %}
           {{ none }}
+        {% else %}
+          {% set now_ts = now().timestamp() %}
+          {% if presence_active %}
+            {# on cherche le premier event STRICTEMENT futur #}
+            {% for ev in payload.events %}
+              {% if as_timestamp(ev.start) > now_ts %}
+                {{ ev.start }}
+                {% break %}
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            {{ payload.events[0].start }}
+          {% endif %}
         {% endif %}
 
       debut_presence: "{{ as_timestamp(next_event_start, default=none) }}"
