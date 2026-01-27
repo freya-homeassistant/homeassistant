@@ -88,8 +88,8 @@ trigger:
   - platform: state
     entity_id: !input calendrier_absence
 
-  - platform: state
-    entity_id: !input heure_prochaine_chauffe
+  - platform: time
+    at: !input heure_prochaine_chauffe
 
 condition:
   - condition: template
