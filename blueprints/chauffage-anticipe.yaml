@@ -174,7 +174,7 @@ action:
         {% if states(prochaine_chauffe_entity) in ['unknown','unavailable',''] %}
           {{ none }}
         {% else %}
-          {{ state_attr(prochaine_chauffe_entity, 'timestamp') }}
+          {{ as_timestamp(states(prochaine_chauffe_entity)) }}
         {% endif %}
 
   - choose:
