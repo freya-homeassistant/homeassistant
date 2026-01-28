@@ -197,13 +197,13 @@ action:
         sequence:
           - service: input_datetime.set_datetime
             target:
-              entity_id:
-                - !input prochaine_chauffe
-                - !input fin_prochaine_chauffe
+              entity_id: !input prochaine_chauffe
             data:
-              timestamp: >
-                {% if target.entity_id == prochaine_chauffe_entity %}
-                  {{ ts_final }}
-                {% else %}
-                  {{ fin_presence }}
-                {% endif %}
+              timestamp: "{{ ts_final }}"
+          - condition: template
+            value_template: "{{ fin_presence is not none }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input fin_prochaine_chauffe
+            data:
+              timestamp: "{{ fin_presence }}"
