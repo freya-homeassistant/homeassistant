@@ -122,7 +122,8 @@ action:
 
       comfort_window: >
         {% set now_ts = now().timestamp() %}
-        {{ ts_start > 0 and ts_end > 0 and now_ts >= ts_start and now_ts < ts_end }}
+        {{ (ts_start > 0 and ts_end > 0 and now_ts >= ts_start and now_ts < ts_end)
+           or is_state(calendrier_presence_entity, 'on') }}
 
       desired_preset: >
         {{ preset_confort_value if comfort_window else preset_eco_value }}
