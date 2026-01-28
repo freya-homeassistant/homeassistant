@@ -187,12 +187,6 @@ action:
 
   - choose:
       - conditions:
-          - condition: state
-            entity_id: !input calendrier_presence
-            state: "on"
-        sequence:
-          - stop: "Présence déjà active, pas d’anticipation"
-      - conditions:
           - condition: template
             value_template: >
               {{ ts_final is not none and (stored_ts is none or ts_final | int != stored_ts | int) }}
