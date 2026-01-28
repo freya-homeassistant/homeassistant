@@ -85,7 +85,13 @@ blueprint:
           domain: calendar
 
     prochaine_chauffe:
-      name: Stockage prochaine chauffe
+      name: Stockage prochaine chauffe (début)
+      selector:
+        entity:
+          domain: input_datetime
+
+    fin_prochaine_chauffe:
+      name: Stockage prochaine chauffe (fin)
       selector:
         entity:
           domain: input_datetime
@@ -116,6 +122,7 @@ action:
       inertie_max: !input inertie_max_minutes
       inertie_min: !input inertie_min_minutes
       prochaine_chauffe_entity: !input prochaine_chauffe
+      fin_prochaine_chauffe_entity: !input fin_prochaine_chauffe
       presence_active: "{{ is_state(calendrier_entity, 'on') }}"
 
   - service: calendar.get_events
@@ -127,17 +134,21 @@ action:
     response_variable: presence_events
 
   - variables:
-      next_event_start: >
+      next_event: >
         {% set events = presence_events.get(calendrier_entity, {}).get('events', []) %}
         {% if presence_active and events | length > 1 %}
-          {{ events[1].start }}
+          {{ events[1] }}
         {% elif events %}
-          {{ events[0].start }}
+          {{ events[0] }}
         {% else %}
           {{ none }}
         {% endif %}
 
+      next_event_start: "{{ next_event.start if next_event is not none else none }}"
+      next_event_end: "{{ next_event.end if next_event is not none else none }}"
+
       debut_presence: "{{ as_timestamp(next_event_start, default=none) }}"
+      fin_presence: "{{ as_timestamp(next_event_end, default=none) }}"
 
       ts_final: >
         {% if debut_presence is none %}
@@ -186,6 +197,13 @@ action:
         sequence:
           - service: input_datetime.set_datetime
             target:
-              entity_id: !input prochaine_chauffe
+              entity_id:
+                - !input prochaine_chauffe
+                - !input fin_prochaine_chauffe
             data:
-              timestamp: "{{ ts_final }}"
+              timestamp: >
+                {% if target.entity_id == prochaine_chauffe_entity %}
+                  {{ ts_final }}
+                {% else %}
+                  {{ fin_presence }}
+                {% endif %}

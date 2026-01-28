@@ -5,7 +5,6 @@ blueprint:
     selon un calendrier de présence et une heure de démarrage calculée.
     Le preset et la consigne sont ré-appliqués après redémarrage de Home Assistant.
   domain: automation
-
   input:
     thermostat:
       name: Thermostat
@@ -26,7 +25,13 @@ blueprint:
           domain: calendar
 
     heure_prochaine_chauffe:
-      name: Heure de démarrage Confort
+      name: Heure de démarrage Confort (Début)
+      selector:
+        entity:
+          domain: input_datetime
+
+    heure_fin_confort:
+      name: Heure de fin Confort (Fin)
       selector:
         entity:
           domain: input_datetime
@@ -72,6 +77,7 @@ variables:
   calendrier_presence_entity: !input calendrier_presence
   calendrier_absence_entity: !input calendrier_absence
   heure_prochaine_chauffe_entity: !input heure_prochaine_chauffe
+  heure_fin_confort_entity: !input heure_fin_confort
   preset_confort_value: !input preset_confort
   preset_eco_value: !input preset_eco
   consigne_confort_value: !input consigne_confort
@@ -109,21 +115,14 @@ action:
         {{ trigger is defined and trigger.id == 'ha_start' }}
 
       ts_start: >
-        {% set raw = states(heure_prochaine_chauffe_entity) %}
-        {{ raw not in ['unknown', 'unavailable', 'none', '']
-           and as_local(as_datetime(raw))
-           or none }}
+        {{ as_timestamp(states(heure_prochaine_chauffe_entity), default=0) }}
 
       ts_end: >
-        {% set raw = state_attr(calendrier_presence_entity, 'end_time') %}
-        {{ raw and as_local(as_datetime(raw)) or none }}
+        {{ as_timestamp(states(heure_fin_confort_entity), default=0) }}
 
       comfort_window: >
-        {{ is_state(calendrier_presence_entity, 'on')
-           and ts_start
-           and ts_end
-           and now() >= ts_start
-           and now() < ts_end }}
+        {% set now_ts = now().timestamp() %}
+        {{ ts_start > 0 and ts_end > 0 and now_ts >= ts_start and now_ts < ts_end }}
 
       desired_preset: >
         {{ preset_confort_value if comfort_window else preset_eco_value }}
@@ -150,11 +149,9 @@ action:
       entity_id: !input thermostat
     data:
       preset_mode: "{{ desired_preset }}"
-      
+
   - service: climate.set_temperature
     target:
       entity_id: !input thermostat
     data:
       temperature: "{{ desired_temperature }}"
-
-  
