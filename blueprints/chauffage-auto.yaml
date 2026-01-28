@@ -108,7 +108,7 @@ action:
           - condition: trigger
             id: ha_start
         sequence:
-          - delay: "00:01:30"
+          - delay: "00:02:00"
 
   - variables:
       ha_restarted: >
