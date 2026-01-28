@@ -145,14 +145,14 @@ action:
     data:
       hvac_mode: heat
 
-  - service: climate.set_preset_mode
-    target:
-      entity_id: !input thermostat
-    data:
-      preset_mode: "{{ desired_preset }}"
-
   - service: climate.set_temperature
     target:
       entity_id: !input thermostat
     data:
       temperature: "{{ desired_temperature }}"
+
+  - service: climate.set_preset_mode
+    target:
+      entity_id: !input thermostat
+    data:
+      preset_mode: "{{ desired_preset }}"
