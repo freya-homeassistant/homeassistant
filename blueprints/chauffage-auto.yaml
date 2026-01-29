@@ -94,6 +94,15 @@ trigger:
   - platform: state
     entity_id: !input calendrier_absence
 
+  - platform: state
+    entity_id: !input heure_prochaine_chauffe
+
+  - platform: state
+    entity_id: !input heure_fin_confort
+
+  - platform: time_pattern
+    minutes: "/5"
+
   - platform: time
     at: !input heure_prochaine_chauffe
 

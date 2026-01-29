@@ -90,6 +90,12 @@ blueprint:
         entity:
           domain: input_datetime
 
+    fin_confort:
+      name: Stockage fin confort
+      selector:
+        entity:
+          domain: input_datetime
+
 mode: single
 
 trigger:
@@ -113,6 +119,7 @@ action:
       inertie_max: !input inertie_max_minutes
       inertie_min: !input inertie_min_minutes
       prochaine_chauffe_entity: !input prochaine_chauffe
+      fin_confort_entity: !input fin_confort
       calendrier_entity: !input calendrier_presence
 
   - service: calendar.get_events
@@ -132,6 +139,7 @@ action:
           {{ calendrier_payload.events
              | selectattr('start', '<=', now_iso)
              | selectattr('end', '>', now_iso)
+             | sort(attribute='start')
              | list
              | first }}
         {% else %}
@@ -142,24 +150,30 @@ action:
         {% if calendrier_payload %}
           {{ calendrier_payload.events
              | selectattr('start', '>', now_iso)
+             | sort(attribute='start')
              | list
              | first }}
         {% else %}
           {{ none }}
         {% endif %}
 
+      event_cible: >
+        {% if event_en_cours %}
+          {{ event_en_cours }}
+        {% else %}
+          {{ prochain_event }}
+        {% endif %}
+
       debut_presence: >
-        {% if prochain_event %}
-          {{ as_timestamp(prochain_event.start) }}
+        {% if event_cible %}
+          {{ as_timestamp(event_cible.start) }}
         {% else %}
           {{ none }}
         {% endif %}
 
       fin_presence: >
-        {% if event_en_cours %}
-          {{ as_timestamp(event_en_cours.end) }}
-        {% elif prochain_event %}
-          {{ as_timestamp(prochain_event.end) }}
+        {% if event_cible %}
+          {{ as_timestamp(event_cible.end) }}
         {% else %}
           {{ none }}
         {% endif %}
@@ -171,6 +185,8 @@ action:
           {% set temp_actuelle = state_attr(thermostat_entity,'current_temperature') | float(0) %}
           {% set temp_cible = states(consigne_entity) | float(0) %}
           {% set delta = temp_cible - temp_actuelle %}
+
+          {% set delta_min = 0.2 %}
 
           {% set slope_h = states(slope_entity) | replace(',', '.') | float(0) %}
           {% set slope_min = slope_h / 60 if slope_h > 0 else 0 %}
@@ -188,13 +204,15 @@ action:
 
           {% set facteur = facteur_base * facteur_ext %}
 
-          {% if delta > 0 and slope_min > 0 %}
+          {% if delta > delta_min and slope_min > 0 %}
             {% set minutes = (delta / slope_min * facteur) | round(0,'ceil') %}
           {% else %}
             {% set minutes = 0 %}
           {% endif %}
 
-          {% set minutes = [minutes, inertie_min | int] | max %}
+          {% if minutes > 0 %}
+            {% set minutes = [minutes, inertie_min | int] | max %}
+          {% endif %}
           {% set minutes = [minutes, inertie_max | int] | min %}
 
           {{ (debut_presence - minutes * 60) | int }}
@@ -203,16 +221,29 @@ action:
       stored_ts: >
         {{ as_timestamp(states(prochaine_chauffe_entity), default=none) }}
 
+      stored_end_ts: >
+        {{ as_timestamp(states(fin_confort_entity), default=none) }}
+
   - choose:
       - conditions:
           - condition: template
             value_template: >
+              {% set min_shift_seconds = 180 %}
+              {% set start_change = (stored_ts is none) or ((ts_final | int - stored_ts | int) | abs > min_shift_seconds) %}
+              {% set end_change = (stored_end_ts is none) or ((fin_presence | int - stored_end_ts | int) | abs > min_shift_seconds) %}
               {{ ts_final is not none
+                 and fin_presence is not none
                  and ts_final < fin_presence
-                 and (stored_ts is none or ts_final | int != stored_ts | int) }}
+                 and (start_change or end_change) }}
         sequence:
           - service: input_datetime.set_datetime
             target:
               entity_id: !input prochaine_chauffe
             data:
               timestamp: "{{ ts_final }}"
+
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input fin_confort
+            data:
+              timestamp: "{{ fin_presence }}"
