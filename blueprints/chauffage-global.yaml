@@ -354,28 +354,31 @@ action:
                 {% else %}
                   0
                 {% endif %}
-    default:
-      - variables:
-          calendrier_payload: "{{ none }}"
-          now_iso: "{{ now().isoformat() }}"
-          event_en_cours: "{{ none }}"
-          prochain_event: "{{ none }}"
-          event_cible: "{{ none }}"
-          debut_presence: "{{ none }}"
-          fin_presence: "{{ none }}"
-          ts_final: "{{ none }}"
-          ts_start_calc: >
-            {% if stored_start_ts is not none %}
-              {{ stored_start_ts | int }}
-            {% else %}
-              0
-            {% endif %}
-          ts_end_calc: >
-            {% if stored_end_ts is not none %}
-              {{ stored_end_ts | int }}
-            {% else %}
-              0
-            {% endif %}
+      - conditions:
+          - condition: template
+            value_template: "{{ not should_recompute }}"
+        sequence:
+          - variables:
+              calendrier_payload: "{{ none }}"
+              now_iso: "{{ now().isoformat() }}"
+              event_en_cours: "{{ none }}"
+              prochain_event: "{{ none }}"
+              event_cible: "{{ none }}"
+              debut_presence: "{{ none }}"
+              fin_presence: "{{ none }}"
+              ts_final: "{{ none }}"
+              ts_start_calc: >
+                {% if stored_start_ts is not none %}
+                  {{ stored_start_ts | int }}
+                {% else %}
+                  0
+                {% endif %}
+              ts_end_calc: >
+                {% if stored_end_ts is not none %}
+                  {{ stored_end_ts | int }}
+                {% else %}
+                  0
+                {% endif %}
 
   - variables:
       ts_start: "{{ ts_start_calc }}"
