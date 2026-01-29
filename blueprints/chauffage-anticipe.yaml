@@ -186,7 +186,7 @@ action:
           {% set temp_cible = states(consigne_entity) | float(0) %}
           {% set delta = temp_cible - temp_actuelle %}
 
-          {% set delta_min = 0.2 %}
+          {% set delta_min = 0.1 %}
 
           {% set slope_h = states(slope_entity) | replace(',', '.') | float(0) %}
           {% set slope_min = slope_h / 60 if slope_h > 0 else 0 %}
