@@ -231,130 +231,155 @@ action:
       step_pct: !input apprentissage_step_percent
       facteur_min: !input apprentissage_facteur_min
       facteur_max: !input apprentissage_facteur_max
+      stored_start_ts: "{{ as_timestamp(states(prochaine_chauffe_entity), default=none) }}"
+      stored_end_ts: "{{ as_timestamp(states(fin_confort_entity), default=none) }}"
+      stored_learn_ts: "{{ as_timestamp(states(dernier_apprentissage_entity), default=none) }}"
+      should_recompute: "{{ (trigger is not defined) or (trigger.id != 'apply_tick') }}"
 
   - condition: template
     value_template: >
       {{ not is_state(calendrier_absence_entity, 'on') }}
 
-  - service: calendar.get_events
-    target:
-      entity_id: !input calendrier_presence
-    data:
-      start_date_time: "{{ now().isoformat() }}"
-      end_date_time: "{{ (now() + timedelta(days=14)).isoformat() }}"
-    response_variable: presence_events
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ should_recompute }}"
+        sequence:
+          - service: calendar.get_events
+            target:
+              entity_id: !input calendrier_presence
+            data:
+              start_date_time: "{{ now().isoformat() }}"
+              end_date_time: "{{ (now() + timedelta(days=14)).isoformat() }}"
+            response_variable: presence_events
+
+          - variables:
+              calendrier_payload: "{{ presence_events.get(calendrier_presence_entity) }}"
+              now_iso: "{{ now().isoformat() }}"
+
+              event_en_cours: >
+                {% if calendrier_payload %}
+                  {{ calendrier_payload.events
+                     | selectattr('start', '<=', now_iso)
+                     | selectattr('end', '>', now_iso)
+                     | sort(attribute='start')
+                     | list
+                     | first }}
+                {% else %}
+                  {{ none }}
+                {% endif %}
+
+              prochain_event: >
+                {% if calendrier_payload %}
+                  {{ calendrier_payload.events
+                     | selectattr('start', '>', now_iso)
+                     | sort(attribute='start')
+                     | list
+                     | first }}
+                {% else %}
+                  {{ none }}
+                {% endif %}
+
+              event_cible: >
+                {% if event_en_cours %}
+                  {{ event_en_cours }}
+                {% else %}
+                  {{ prochain_event }}
+                {% endif %}
+
+              debut_presence: >
+                {% if event_cible %}
+                  {{ as_timestamp(event_cible.start) }}
+                {% else %}
+                  {{ none }}
+                {% endif %}
+
+              fin_presence: >
+                {% if event_cible %}
+                  {{ as_timestamp(event_cible.end) }}
+                {% else %}
+                  {{ none }}
+                {% endif %}
+
+              ts_final: >
+                {% if debut_presence is none or fin_presence is none %}
+                  {{ none }}
+                {% else %}
+                  {% set temp_actuelle = state_attr(thermostat_entity,'current_temperature') | float(0) %}
+                  {% set temp_cible = states(consigne_confort_entity) | float(0) %}
+                  {% set delta = temp_cible - temp_actuelle %}
+
+                  {% set delta_min = 0.1 %}
+
+                  {% set slope_h = states(slope_entity) | replace(',', '.') | float(0) %}
+                  {% set slope_min = slope_h / 60 if slope_h > 0 else 0 %}
+
+                  {% set facteur_base = states(facteur_entity) | float(1.2) %}
+
+                  {% set temp_ext = states(temp_ext_entity) | float(temp_ext_ref) %}
+                  {% set delta_ext = temp_ext_ref - temp_ext %}
+                  {% if delta_ext > 0 %}
+                    {% set facteur_ext = 1 + (delta_ext * coeff_ext_val / 100) %}
+                  {% else %}
+                    {% set facteur_ext = 1 %}
+                  {% endif %}
+                  {% set facteur_ext = [facteur_ext, 1.3] | min %}
+
+                  {% set facteur = facteur_base * facteur_ext %}
+
+                  {% if delta > delta_min and slope_min > 0 %}
+                    {% set minutes = (delta / slope_min * facteur) | round(0,'ceil') %}
+                  {% else %}
+                    {% set minutes = 0 %}
+                  {% endif %}
+
+                  {% if minutes > 0 %}
+                    {% set minutes = [minutes, inertie_min | int] | max %}
+                  {% endif %}
+                  {% set minutes = [minutes, inertie_max | int] | min %}
+
+                  {{ (debut_presence - minutes * 60) | int }}
+                {% endif %}
+
+              ts_start_calc: >
+                {% if ts_final is not none %}
+                  {{ ts_final | int }}
+                {% else %}
+                  0
+                {% endif %}
+
+              ts_end_calc: >
+                {% if fin_presence is not none %}
+                  {{ fin_presence | int }}
+                {% else %}
+                  0
+                {% endif %}
+      default:
+        - variables:
+            calendrier_payload: "{{ none }}"
+            now_iso: "{{ now().isoformat() }}"
+            event_en_cours: "{{ none }}"
+            prochain_event: "{{ none }}"
+            event_cible: "{{ none }}"
+            debut_presence: "{{ none }}"
+            fin_presence: "{{ none }}"
+            ts_final: "{{ none }}"
+            ts_start_calc: >
+              {% if stored_start_ts is not none %}
+                {{ stored_start_ts | int }}
+              {% else %}
+                0
+              {% endif %}
+            ts_end_calc: >
+              {% if stored_end_ts is not none %}
+                {{ stored_end_ts | int }}
+              {% else %}
+                0
+              {% endif %}
 
   - variables:
-      calendrier_payload: "{{ presence_events.get(calendrier_presence_entity) }}"
-      now_iso: "{{ now().isoformat() }}"
-
-      event_en_cours: >
-        {% if calendrier_payload %}
-          {{ calendrier_payload.events
-             | selectattr('start', '<=', now_iso)
-             | selectattr('end', '>', now_iso)
-             | sort(attribute='start')
-             | list
-             | first }}
-        {% else %}
-          {{ none }}
-        {% endif %}
-
-      prochain_event: >
-        {% if calendrier_payload %}
-          {{ calendrier_payload.events
-             | selectattr('start', '>', now_iso)
-             | sort(attribute='start')
-             | list
-             | first }}
-        {% else %}
-          {{ none }}
-        {% endif %}
-
-      event_cible: >
-        {% if event_en_cours %}
-          {{ event_en_cours }}
-        {% else %}
-          {{ prochain_event }}
-        {% endif %}
-
-      debut_presence: >
-        {% if event_cible %}
-          {{ as_timestamp(event_cible.start) }}
-        {% else %}
-          {{ none }}
-        {% endif %}
-
-      fin_presence: >
-        {% if event_cible %}
-          {{ as_timestamp(event_cible.end) }}
-        {% else %}
-          {{ none }}
-        {% endif %}
-
-      ts_final: >
-        {% if debut_presence is none or fin_presence is none %}
-          {{ none }}
-        {% else %}
-          {% set temp_actuelle = state_attr(thermostat_entity,'current_temperature') | float(0) %}
-          {% set temp_cible = states(consigne_confort_entity) | float(0) %}
-          {% set delta = temp_cible - temp_actuelle %}
-
-          {% set delta_min = 0.1 %}
-
-          {% set slope_h = states(slope_entity) | replace(',', '.') | float(0) %}
-          {% set slope_min = slope_h / 60 if slope_h > 0 else 0 %}
-
-          {% set facteur_base = states(facteur_entity) | float(1.2) %}
-
-          {% set temp_ext = states(temp_ext_entity) | float(temp_ext_ref) %}
-          {% set delta_ext = temp_ext_ref - temp_ext %}
-          {% if delta_ext > 0 %}
-            {% set facteur_ext = 1 + (delta_ext * coeff_ext_val / 100) %}
-          {% else %}
-            {% set facteur_ext = 1 %}
-          {% endif %}
-          {% set facteur_ext = [facteur_ext, 1.3] | min %}
-
-          {% set facteur = facteur_base * facteur_ext %}
-
-          {% if delta > delta_min and slope_min > 0 %}
-            {% set minutes = (delta / slope_min * facteur) | round(0,'ceil') %}
-          {% else %}
-            {% set minutes = 0 %}
-          {% endif %}
-
-          {% if minutes > 0 %}
-            {% set minutes = [minutes, inertie_min | int] | max %}
-          {% endif %}
-          {% set minutes = [minutes, inertie_max | int] | min %}
-
-          {{ (debut_presence - minutes * 60) | int }}
-        {% endif %}
-
-      stored_start_ts: >
-        {{ as_timestamp(states(prochaine_chauffe_entity), default=none) }}
-
-      stored_end_ts: >
-        {{ as_timestamp(states(fin_confort_entity), default=none) }}
-
-      stored_learn_ts: >
-        {{ as_timestamp(states(dernier_apprentissage_entity), default=none) }}
-
-      ts_start: >
-        {% if ts_final is not none %}
-          {{ ts_final | int }}
-        {% else %}
-          0
-        {% endif %}
-
-      ts_end: >
-        {% if fin_presence is not none %}
-          {{ fin_presence | int }}
-        {% else %}
-          0
-        {% endif %}
-
+      ts_start: "{{ ts_start_calc }}"
+      ts_end: "{{ ts_end_calc }}"
       comfort_window: >
         {% set now_ts = now().timestamp() %}
         {{ (ts_start > 0 and ts_end > 0 and now_ts >= ts_start and now_ts < ts_end)
