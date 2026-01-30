@@ -8,49 +8,56 @@ blueprint:
   input:
     thermostat:
       name: Thermostat Versatile
-      description: Thermostat contrôlé par l'automatisation (climate.*)
+      description: >
+        Thermostat contrôlé par l'automatisation (climate.*)
       selector:
         entity:
           domain: climate
 
     calendrier_presence:
       name: Calendrier Présence
-      description: Calendrier qui déclenche la chauffe Confort (présences)
+      description: >
+        Calendrier qui déclenche la chauffe Confort (présences)
       selector:
         entity:
           domain: calendar
 
     calendrier_absence:
       name: Calendrier Absence
-      description: Calendrier d'absence qui désactive la chauffe
+      description: >
+        Calendrier d'absence qui désactive la chauffe
       selector:
         entity:
           domain: calendar
 
     vitesse_chauffe_sensor:
       name: Vitesse de chauffe (°C/h)
-      description: Capteur slope/vitesse de montée en température (°C/h)
+      description: >
+        Capteur slope/vitesse de montée en température (°C/h)
       selector:
         entity:
           domain: sensor
 
     consigne_confort:
       name: Consigne confort
-      description: Consigne Confort appliquée pendant la présence
+      description: >
+        Consigne Confort appliquée pendant la présence
       selector:
         entity:
           domain: number
 
     consigne_eco:
       name: Consigne éco
-      description: Consigne Éco appliquée hors présence
+      description: >
+        Consigne Éco appliquée hors présence
       selector:
         entity:
           domain: number
 
     preset_confort:
       name: Preset Confort
-      description: Preset du thermostat à activer en mode Confort
+      description: >
+        Preset du thermostat à activer en mode Confort
       default: comfort
       selector:
         select:
@@ -62,7 +69,8 @@ blueprint:
 
     preset_eco:
       name: Preset Éco
-      description: Preset du thermostat à activer en mode Éco
+      description: >
+        Preset du thermostat à activer en mode Éco
       default: eco
       selector:
         select:
@@ -74,21 +82,24 @@ blueprint:
 
     facteur_chauffe:
       name: Facteur de correction (auto-apprenant)
-      description: Multiplicateur auto-apprenant du temps d'anticipation
+      description: >
+        Multiplicateur auto-apprenant du temps d'anticipation
       selector:
         entity:
           domain: input_number
 
     temp_exterieure:
       name: Température extérieure
-      description: Capteur extérieur utilisé pour la correction météo
+      description: >
+        Capteur extérieur utilisé pour la correction météo
       selector:
         entity:
           domain: sensor
 
     temp_ext_reference:
       name: Température extérieure de référence (°C)
-      description: Point pivot météo ; plus froid que cette valeur ⇒ on anticipe plus
+      description: >
+        Point pivot météo ; plus froid que cette valeur ⇒ on anticipe plus
       default: 10
       selector:
         number:
@@ -98,7 +109,8 @@ blueprint:
 
     coeff_ext:
       name: Sensibilité température extérieure (% / °C)
-      description: Pourcentage ajouté par degré sous la référence (plafonné)
+      description: >
+        Pourcentage ajouté par degré sous la référence (plafonné)
       default: 5
       selector:
         number:
@@ -108,7 +120,8 @@ blueprint:
 
     inertie_max_minutes:
       name: Anticipation maximale (minutes)
-      description: Plafond du temps d'anticipation appliqué
+      description: >
+        Plafond du temps d'anticipation appliqué
       default: 180
       selector:
         number:
@@ -118,7 +131,8 @@ blueprint:
 
     inertie_min_minutes:
       name: Anticipation minimale (minutes)
-      description: Plancher du temps d'anticipation quand un chauffage est requis
+      description: >
+        Plancher du temps d'anticipation quand un chauffage est requis
       default: 15
       selector:
         number:
@@ -128,28 +142,32 @@ blueprint:
 
     prochaine_chauffe:
       name: Heure début prochaine chauffe
-      description: Input_datetime de sortie pour stocker le début Confort calculé
+      description: >
+        Input_datetime de sortie pour stocker le début Confort calculé
       selector:
         entity:
           domain: input_datetime
 
     fin_confort:
       name: Heure fin confort
-      description: Input_datetime de sortie pour stocker la fin de la fenêtre Confort
+      description: >
+        Input_datetime de sortie pour stocker la fin de la fenêtre Confort
       selector:
         entity:
           domain: input_datetime
 
     dernier_apprentissage:
       name: Stockage dernier apprentissage
-      description: Input_datetime pour mémoriser la dernière mise à jour du facteur
+      description: >
+        Input_datetime pour mémoriser la dernière mise à jour du facteur
       selector:
         entity:
           domain: input_datetime
 
     apprentissage_zone_neutre:
       name: Apprentissage – zone neutre (°C)
-      description: Écart toléré autour de la consigne sans ajuster le facteur
+      description: >
+        Écart toléré autour de la consigne sans ajuster le facteur
       default: 0.2
       selector:
         number:
@@ -159,7 +177,8 @@ blueprint:
 
     apprentissage_step_percent:
       name: Apprentissage – pas d'ajustement (%)
-      description: Variation en % appliquée au facteur quand l'erreur dépasse la zone neutre
+      description: >
+        Variation en % appliquée au facteur quand l'erreur dépasse la zone neutre
       default: 3
       selector:
         number:
@@ -169,7 +188,8 @@ blueprint:
 
     apprentissage_facteur_min:
       name: Apprentissage – facteur min
-      description: Borne basse du facteur auto-apprenant
+      description: >
+        Borne basse du facteur auto-apprenant
       default: 0.8
       selector:
         number:
@@ -179,7 +199,8 @@ blueprint:
 
     apprentissage_facteur_max:
       name: Apprentissage – facteur max
-      description: Borne haute du facteur auto-apprenant
+      description: >
+        Borne haute du facteur auto-apprenant
       default: 2.0
       selector:
         number:
