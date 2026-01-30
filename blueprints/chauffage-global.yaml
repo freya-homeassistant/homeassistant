@@ -2,7 +2,7 @@ blueprint:
   name: Chauffage – Global (anticipation + pilotage + auto-apprentissage)
   description: >
     Calcule l'heure optimale de démarrage de chauffe (anticipation) à partir d'un calendrier de présence
-    et d'un slope (°C/h), applique automatiquement les presets/consignes Confort et Éco, et ajuste
+    et d'une vitesse de chauffe (°C/h), applique automatiquement les presets/consignes Confort et Éco, et ajuste
     un facteur de correction auto-apprenant en fonction de l'écart constaté au début de la présence.
   domain: automation
   input:
@@ -24,8 +24,8 @@ blueprint:
         entity:
           domain: calendar
 
-    slope_sensor:
-      name: Slope VT utilisable (°C/h)
+    vitesse_chauffe_sensor:
+      name: Vitesse de chauffe (°C/h)
       selector:
         entity:
           domain: sensor
@@ -213,7 +213,7 @@ action:
       thermostat_entity: !input thermostat
       calendrier_presence_entity: !input calendrier_presence
       calendrier_absence_entity: !input calendrier_absence
-      slope_entity: !input slope_sensor
+      vitesse_chauffe_entity: !input vitesse_chauffe_sensor
       consigne_confort_entity: !input consigne_confort
       consigne_eco_entity: !input consigne_eco
       facteur_entity: !input facteur_chauffe
@@ -311,8 +311,8 @@ action:
 
                   {% set delta_min = 0.1 %}
 
-                  {% set slope_h = states(slope_entity) | replace(',', '.') | float(0) %}
-                  {% set slope_min = slope_h / 60 if slope_h > 0 else 0 %}
+                  {% set vitesse_chauffe_h = states(vitesse_chauffe_entity) | replace(',', '.') | float(0) %}
+                  {% set vitesse_chauffe_min = vitesse_chauffe_h / 60 if vitesse_chauffe_h > 0 else 0 %}
 
                   {% set facteur_base = states(facteur_entity) | float(1.2) %}
 
@@ -327,8 +327,8 @@ action:
 
                   {% set facteur = facteur_base * facteur_ext %}
 
-                  {% if delta > delta_min and slope_min > 0 %}
-                    {% set minutes = (delta / slope_min * facteur) | round(0,'ceil') %}
+                  {% if delta > delta_min and vitesse_chauffe_min > 0 %}
+                    {% set minutes = (delta / vitesse_chauffe_min * facteur) | round(0,'ceil') %}
                   {% else %}
                     {% set minutes = 0 %}
                   {% endif %}
