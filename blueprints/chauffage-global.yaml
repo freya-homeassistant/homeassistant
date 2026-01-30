@@ -31,9 +31,9 @@ blueprint:
           domain: calendar
 
     vitesse_chauffe_sensor:
-      name: Vitesse de chauffe (°C/h)
+      name: Vitesse de chauffe (°C/min)
       description: >
-        Capteur slope/vitesse de montée en température (°C/h)
+        Capteur slope/vitesse de montée en température (°C/min)
       selector:
         entity:
           domain: sensor
@@ -353,8 +353,7 @@ action:
 
                   {% set delta_min = 0.1 %}
 
-                  {% set vitesse_chauffe_h = states(vitesse_chauffe_entity) | replace(',', '.') | float(0) %}
-                  {% set vitesse_chauffe_min = vitesse_chauffe_h / 60 if vitesse_chauffe_h > 0 else 0 %}
+                  {% set vitesse_chauffe_min = states(vitesse_chauffe_entity) | replace(',', '.') | float(0) %}
 
                   {% set facteur_base = states(facteur_entity) | float(1.2) %}
 
