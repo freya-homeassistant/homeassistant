@@ -353,7 +353,8 @@ action:
 
                   {% set delta_min = 0.1 %}
 
-                  {% set vitesse_chauffe_min = states(vitesse_chauffe_entity) | replace(',', '.') | float(0) %}
+                  {% set vitesse_chauffe_brute = states(vitesse_chauffe_entity) | replace(',', '.') | float(0) %}
+                  {% set vitesse_chauffe_min = [vitesse_chauffe_brute, 0.01] | max %}
 
                   {% set facteur_base = states(facteur_entity) | float(1.2) %}
 
