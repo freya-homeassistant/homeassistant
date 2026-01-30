@@ -1,105 +1,84 @@
 blueprint:
-  name: Chauffage – Global (anticipation + pilotage + auto-apprentissage)
+  name: Chauffage – Global (anticipation + pilotage + auto-apprentissage ROBUSTE)
   description: >
-    Calcule l'heure optimale de démarrage de chauffe (anticipation) à partir d'un calendrier de présence
-    et d'une vitesse de chauffe (°C/h), applique automatiquement les presets/consignes Confort et Éco, et ajuste
-    un facteur de correction auto-apprenant en fonction de l'écart constaté au début de la présence.
+    Anticipation de chauffe basée sur calendrier + vitesse de chauffe,
+    pilotage Confort / Éco, et auto-apprentissage robuste déclenché
+    sur l'heure réelle de début de présence (indépendant des états calendar).
   domain: automation
+
   input:
     thermostat:
-      name: Thermostat Versatile
-      description: >
-        Thermostat contrôlé par l'automatisation (climate.*)
+      name: Thermostat
       selector:
         entity:
           domain: climate
 
     calendrier_presence:
       name: Calendrier Présence
-      description: >
-        Calendrier qui déclenche la chauffe Confort (présences)
       selector:
         entity:
           domain: calendar
 
     calendrier_absence:
       name: Calendrier Absence
-      description: >
-        Calendrier d'absence qui désactive la chauffe
       selector:
         entity:
           domain: calendar
 
     vitesse_chauffe_sensor:
       name: Vitesse de chauffe (°C/min)
-      description: >
-        Capteur slope/vitesse de montée en température (°C/min)
       selector:
         entity:
           domain: sensor
 
     consigne_confort:
-      name: Consigne confort
-      description: >
-        Consigne Confort appliquée pendant la présence
+      name: Consigne Confort
       selector:
         entity:
           domain: number
 
     consigne_eco:
-      name: Consigne éco
-      description: >
-        Consigne Éco appliquée hors présence
+      name: Consigne Éco
       selector:
         entity:
           domain: number
 
     preset_confort:
       name: Preset Confort
-      description: >
-        Preset du thermostat à activer en mode Confort
       default: comfort
       selector:
         select:
           options:
-            - label: "Confort"
+            - label: Confort
               value: comfort
-            - label: "Eco"
+            - label: Eco
               value: eco
 
     preset_eco:
       name: Preset Éco
-      description: >
-        Preset du thermostat à activer en mode Éco
       default: eco
       selector:
         select:
           options:
-            - label: "Eco"
+            - label: Eco
               value: eco
-            - label: "Confort"
+            - label: Confort
               value: comfort
 
     facteur_chauffe:
-      name: Facteur de correction (auto-apprenant)
-      description: >
-        Multiplicateur auto-apprenant du temps d'anticipation
+      name: Facteur auto-apprenant
       selector:
         entity:
           domain: input_number
 
     temp_exterieure:
       name: Température extérieure
-      description: >
-        Capteur extérieur utilisé pour la correction météo
       selector:
         entity:
           domain: sensor
 
     temp_ext_reference:
-      name: Température extérieure de référence (°C)
-      description: >
-        Point pivot météo ; plus froid que cette valeur ⇒ on anticipe plus
+      name: Température extérieure de référence
       default: 10
       selector:
         number:
@@ -108,9 +87,7 @@ blueprint:
           step: 1
 
     coeff_ext:
-      name: Sensibilité température extérieure (% / °C)
-      description: >
-        Pourcentage ajouté par degré sous la référence (plafonné)
+      name: Sensibilité extérieure (% / °C)
       default: 5
       selector:
         number:
@@ -119,9 +96,7 @@ blueprint:
           step: 1
 
     inertie_max_minutes:
-      name: Anticipation maximale (minutes)
-      description: >
-        Plafond du temps d'anticipation appliqué
+      name: Anticipation maximale (min)
       default: 180
       selector:
         number:
@@ -130,9 +105,7 @@ blueprint:
           step: 5
 
     inertie_min_minutes:
-      name: Anticipation minimale (minutes)
-      description: >
-        Plancher du temps d'anticipation quand un chauffage est requis
+      name: Anticipation minimale (min)
       default: 15
       selector:
         number:
@@ -141,33 +114,25 @@ blueprint:
           step: 5
 
     prochaine_chauffe:
-      name: Heure début prochaine chauffe
-      description: >
-        Input_datetime de sortie pour stocker le début Confort calculé
+      name: Début Confort calculé
       selector:
         entity:
           domain: input_datetime
 
     fin_confort:
-      name: Heure fin confort
-      description: >
-        Input_datetime de sortie pour stocker la fin de la fenêtre Confort
+      name: Fin Confort
       selector:
         entity:
           domain: input_datetime
 
     dernier_apprentissage:
-      name: Stockage dernier apprentissage
-      description: >
-        Input_datetime pour mémoriser la dernière mise à jour du facteur
+      name: Dernier apprentissage
       selector:
         entity:
           domain: input_datetime
 
     apprentissage_zone_neutre:
-      name: Apprentissage – zone neutre (°C)
-      description: >
-        Écart toléré autour de la consigne sans ajuster le facteur
+      name: Zone neutre (°C)
       default: 0.2
       selector:
         number:
@@ -176,9 +141,7 @@ blueprint:
           step: 0.05
 
     apprentissage_step_percent:
-      name: Apprentissage – pas d'ajustement (%)
-      description: >
-        Variation en % appliquée au facteur quand l'erreur dépasse la zone neutre
+      name: Pas apprentissage (%)
       default: 3
       selector:
         number:
@@ -187,25 +150,21 @@ blueprint:
           step: 1
 
     apprentissage_facteur_min:
-      name: Apprentissage – facteur min
-      description: >
-        Borne basse du facteur auto-apprenant
+      name: Facteur min
       default: 0.8
       selector:
         number:
           min: 0.5
-          max: 2.0
+          max: 2
           step: 0.05
 
     apprentissage_facteur_max:
-      name: Apprentissage – facteur max
-      description: >
-        Borne haute du facteur auto-apprenant
+      name: Facteur max
       default: 2.0
       selector:
         number:
           min: 0.5
-          max: 3.0
+          max: 3
           step: 0.05
 
 mode: single
@@ -221,41 +180,15 @@ trigger:
   - platform: state
     entity_id: !input calendrier_absence
 
-  - platform: state
-    entity_id: !input calendrier_presence
-    from: "off"
-    to: "on"
-    id: presence_start
-
-  - platform: time_pattern
-    minutes: "/15"
-    id: compute_tick
-
   - platform: time_pattern
     minutes: "/5"
-    id: apply_tick
-
-  - platform: time
-    at: !input prochaine_chauffe
-    id: start_time
-
-  - platform: time
-    at: !input fin_confort
-    id: end_time
 
 action:
-  - choose:
-      - conditions:
-          - condition: trigger
-            id: ha_start
-        sequence:
-          - delay: "00:02:00"
-
   - variables:
       thermostat_entity: !input thermostat
       calendrier_presence_entity: !input calendrier_presence
       calendrier_absence_entity: !input calendrier_absence
-      vitesse_chauffe_entity: !input vitesse_chauffe_sensor
+      vitesse_entity: !input vitesse_chauffe_sensor
       consigne_confort_entity: !input consigne_confort
       consigne_eco_entity: !input consigne_eco
       facteur_entity: !input facteur_chauffe
@@ -273,183 +206,81 @@ action:
       step_pct: !input apprentissage_step_percent
       facteur_min: !input apprentissage_facteur_min
       facteur_max: !input apprentissage_facteur_max
+
       stored_start_ts: "{{ as_timestamp(states(prochaine_chauffe_entity), default=none) }}"
       stored_end_ts: "{{ as_timestamp(states(fin_confort_entity), default=none) }}"
       stored_learn_ts: "{{ as_timestamp(states(dernier_apprentissage_entity), default=none) }}"
-      should_recompute: "{{ (trigger is not defined) or (trigger.id != 'apply_tick') }}"
 
   - condition: template
-    value_template: >
-      {{ not is_state(calendrier_absence_entity, 'on') }}
+    value_template: "{{ not is_state(calendrier_absence_entity, 'on') }}"
 
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ should_recompute }}"
-        sequence:
-          - service: calendar.get_events
-            target:
-              entity_id: !input calendrier_presence
-            data:
-              start_date_time: "{{ now().isoformat() }}"
-              end_date_time: "{{ (now() + timedelta(days=14)).isoformat() }}"
-            response_variable: presence_events
-
-          - variables:
-              calendrier_payload: "{{ presence_events.get(calendrier_presence_entity) }}"
-              now_iso: "{{ now().isoformat() }}"
-
-              event_en_cours: >
-                {% if calendrier_payload %}
-                  {{ calendrier_payload.events
-                     | selectattr('start', '<=', now_iso)
-                     | selectattr('end', '>', now_iso)
-                     | sort(attribute='start')
-                     | list
-                     | first }}
-                {% else %}
-                  {{ none }}
-                {% endif %}
-
-              prochain_event: >
-                {% if calendrier_payload %}
-                  {{ calendrier_payload.events
-                     | selectattr('start', '>', now_iso)
-                     | sort(attribute='start')
-                     | list
-                     | first }}
-                {% else %}
-                  {{ none }}
-                {% endif %}
-
-              event_cible: >
-                {% if event_en_cours %}
-                  {{ event_en_cours }}
-                {% else %}
-                  {{ prochain_event }}
-                {% endif %}
-
-              debut_presence: >
-                {% if event_cible %}
-                  {{ as_timestamp(event_cible.start) }}
-                {% else %}
-                  {{ none }}
-                {% endif %}
-
-              fin_presence: >
-                {% if event_cible %}
-                  {{ as_timestamp(event_cible.end) }}
-                {% else %}
-                  {{ none }}
-                {% endif %}
-
-              ts_final: >
-                {% if debut_presence is none or fin_presence is none %}
-                  {{ none }}
-                {% else %}
-                  {% set temp_actuelle = state_attr(thermostat_entity,'current_temperature') | float(0) %}
-                  {% set temp_cible = states(consigne_confort_entity) | float(0) %}
-                  {% set delta = temp_cible - temp_actuelle %}
-
-                  {% set delta_min = 0.1 %}
-
-                  {% set vitesse_chauffe_brute = states(vitesse_chauffe_entity) | replace(',', '.') | float(0) %}
-                  {% set vitesse_chauffe_min = [vitesse_chauffe_brute, 0.01] | max %}
-
-                  {% set facteur_base = states(facteur_entity) | float(1.2) %}
-
-                  {% set temp_ext = states(temp_ext_entity) | float(temp_ext_ref) %}
-                  {% set delta_ext = temp_ext_ref - temp_ext %}
-                  {% if delta_ext > 0 %}
-                    {% set facteur_ext = 1 + (delta_ext * coeff_ext_val / 100) %}
-                  {% else %}
-                    {% set facteur_ext = 1 %}
-                  {% endif %}
-                  {% set facteur_ext = [facteur_ext, 1.3] | min %}
-
-                  {% set facteur = facteur_base * facteur_ext %}
-
-                  {% if delta > delta_min and vitesse_chauffe_min > 0 %}
-                    {% set minutes = (delta / vitesse_chauffe_min * facteur) | round(0,'ceil') %}
-                  {% else %}
-                    {% set minutes = 0 %}
-                  {% endif %}
-
-                  {% if minutes > 0 %}
-                    {% set minutes = [minutes, inertie_min | int] | max %}
-                  {% endif %}
-                  {% set minutes = [minutes, inertie_max | int] | min %}
-
-                  {{ (debut_presence - minutes * 60) | int }}
-                {% endif %}
-
-              ts_start_calc: >
-                {% if ts_final is not none %}
-                  {{ ts_final | int }}
-                {% else %}
-                  0
-                {% endif %}
-
-              ts_end_calc: >
-                {% if fin_presence is not none %}
-                  {{ fin_presence | int }}
-                {% else %}
-                  0
-                {% endif %}
-      - conditions:
-          - condition: template
-            value_template: "{{ not should_recompute }}"
-        sequence:
-          - variables:
-              calendrier_payload: "{{ none }}"
-              now_iso: "{{ now().isoformat() }}"
-              event_en_cours: "{{ none }}"
-              prochain_event: "{{ none }}"
-              event_cible: "{{ none }}"
-              debut_presence: "{{ none }}"
-              fin_presence: "{{ none }}"
-              ts_final: "{{ none }}"
-              ts_start_calc: >
-                {% if stored_start_ts is not none %}
-                  {{ stored_start_ts | int }}
-                {% else %}
-                  0
-                {% endif %}
-              ts_end_calc: >
-                {% if stored_end_ts is not none %}
-                  {{ stored_end_ts | int }}
-                {% else %}
-                  0
-                {% endif %}
+  - service: calendar.get_events
+    target:
+      entity_id: !input calendrier_presence
+    data:
+      start_date_time: "{{ now().isoformat() }}"
+      end_date_time: "{{ (now() + timedelta(days=7)).isoformat() }}"
+    response_variable: presence_events
 
   - variables:
-      ts_start: "{{ ts_start_calc }}"
-      ts_end: "{{ ts_end_calc }}"
+      payload: "{{ presence_events.get(calendrier_presence_entity) }}"
+      now_iso: "{{ now().isoformat() }}"
+
+      event: >
+        {% if payload %}
+          {{ payload.events
+             | selectattr('start','<=',now_iso)
+             | selectattr('end','>',now_iso)
+             | list
+             | first
+             or
+             (payload.events
+              | selectattr('start','>',now_iso)
+              | list
+              | first) }}
+        {% else %}{{ none }}{% endif %}
+
+      debut_presence: "{{ as_timestamp(event.start) if event else none }}"
+      fin_presence: "{{ as_timestamp(event.end) if event else none }}"
+
+  - variables:
+      temp_actuelle: "{{ state_attr(thermostat_entity,'current_temperature') | float(0) }}"
+      temp_cible: "{{ states(consigne_confort_entity) | float(0) }}"
+      delta: "{{ temp_cible - temp_actuelle }}"
+
+      vitesse_raw: "{{ states(vitesse_entity) | replace(',', '.') | float(0) }}"
+      vitesse: "{{ [vitesse_raw, 0.01] | max }}"
+
+      facteur_base: "{{ states(facteur_entity) | float(1.2) }}"
+      temp_ext: "{{ states(temp_ext_entity) | float(temp_ext_ref) }}"
+      delta_ext: "{{ temp_ext_ref - temp_ext }}"
+      facteur_ext: >
+        {% if delta_ext > 0 %}
+          {{ [1 + delta_ext * coeff_ext_val / 100, 1.3] | min }}
+        {% else %}1{% endif %}
+      facteur: "{{ facteur_base * facteur_ext }}"
+
+      minutes: >
+        {% if delta > 0.1 %}
+          {{ (delta / vitesse * facteur) | round(0,'ceil') }}
+        {% else %}0{% endif %}
+
+      minutes_final: >
+        {% if minutes > 0 %}
+          {{ [ [minutes, inertie_min]|max, inertie_max ]|min }}
+        {% else %}0{% endif %}
+
+      ts_start: "{{ (debut_presence - minutes_final*60) | int if debut_presence else 0 }}"
+      ts_end: "{{ fin_presence | int if fin_presence else 0 }}"
+
       comfort_window: >
         {% set now_ts = now().timestamp() %}
-        {{ (ts_start > 0 and ts_end > 0 and now_ts >= ts_start and now_ts < ts_end)
-           or is_state(calendrier_presence_entity, 'on') }}
-
-      desired_preset: >
-        {{ preset_confort_value if comfort_window else preset_eco_value }}
-
-      desired_temperature: >
-        {{ states(consigne_confort_entity if comfort_window else consigne_eco_entity) | float(0) }}
-
-      current_preset: >
-        {{ state_attr(thermostat_entity, 'preset_mode') }}
-
-      hvac_is_off: >
-        {{ states(thermostat_entity) == 'off' }}
+        {{ ts_start > 0 and ts_end > 0 and now_ts >= ts_start and now_ts < ts_end }}
 
   - choose:
       - conditions:
           - condition: template
-            value_template: >
-              {% set min_shift_seconds = 180 %}
-              {% set start_change = (stored_start_ts is none) or ((ts_start | int - stored_start_ts | int) | abs > min_shift_seconds) %}
-              {% set end_change = (stored_end_ts is none) or ((ts_end | int - stored_end_ts | int) | abs > min_shift_seconds) %}
-              {{ ts_start > 0 and ts_end > 0 and ts_start < ts_end and (start_change or end_change) }}
+            value_template: "{{ ts_start > 0 and ts_end > 0 }}"
         sequence:
           - service: input_datetime.set_datetime
             target:
@@ -463,74 +294,41 @@ action:
             data:
               timestamp: "{{ ts_end }}"
 
+  # ===== APPRENTISSAGE ROBUSTE =====
   - choose:
       - conditions:
           - condition: template
             value_template: >
-              {{ current_preset != desired_preset or (trigger is defined and trigger.id == 'ha_start') }}
-          - condition: template
-            value_template: >
-              {{ (current_preset | default('')) != 'boost' and not hvac_is_off }}
-        sequence:
-          - service: climate.set_temperature
-            target:
-              entity_id: !input thermostat
-            data:
-              temperature: "{{ desired_temperature }}"
-
-          - service: climate.set_preset_mode
-            target:
-              entity_id: !input thermostat
-            data:
-              preset_mode: "{{ desired_preset }}"
-
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input thermostat
-            data:
-              hvac_mode: heat
-
-  - choose:
-      - conditions:
-          - condition: trigger
-            id: presence_start
-          - condition: template
-            value_template: >
-              {{ debut_presence is not none }}
-          - condition: template
-            value_template: >
-              {% set min_shift_seconds = 180 %}
-              {{ stored_learn_ts is none or ((debut_presence | int - stored_learn_ts | int) | abs > min_shift_seconds) }}
+              {{ comfort_window
+                 and debut_presence is not none
+                 and now().timestamp() >= debut_presence
+                 and now().timestamp() < debut_presence + 300
+                 and (stored_learn_ts is none
+                      or (debut_presence - stored_learn_ts) | abs > 300) }}
         sequence:
           - variables:
-              temp_actuelle: "{{ state_attr(thermostat_entity,'current_temperature') | float(0) }}"
-              temp_cible: "{{ states(consigne_confort_entity) | float(0) }}"
-              erreur: "{{ (temp_cible - temp_actuelle) | float(0) }}"
+              erreur: "{{ temp_cible - temp_actuelle }}"
               facteur_actuel: "{{ states(facteur_entity) | float(1.2) }}"
-              step_ratio: "{{ (step_pct | float(0)) / 100 }}"
+              step_ratio: "{{ step_pct / 100 }}"
               nouveau_facteur: >
-                {% if erreur > (zone_neutre | float(0)) %}
+                {% if erreur > zone_neutre %}
                   {{ facteur_actuel * (1 + step_ratio) }}
-                {% elif erreur < (0 - (zone_neutre | float(0))) %}
+                {% elif erreur < -zone_neutre %}
                   {{ facteur_actuel * (1 - step_ratio) }}
                 {% else %}
                   {{ facteur_actuel }}
                 {% endif %}
-              nouveau_facteur_borne: >
-                {% set f = (nouveau_facteur | float(1.2)) %}
-                {% set f = [f, facteur_min | float(0.8)] | max %}
-                {% set f = [f, facteur_max | float(2.0)] | min %}
-                {{ f }}
+              facteur_borne: >
+                {{ [ [nouveau_facteur, facteur_min]|max, facteur_max ]|min }}
 
           - condition: template
-            value_template: >
-              {{ (nouveau_facteur_borne | float(0)) != (facteur_actuel | float(0)) }}
+            value_template: "{{ facteur_borne != facteur_actuel }}"
 
           - service: input_number.set_value
             target:
               entity_id: !input facteur_chauffe
             data:
-              value: "{{ nouveau_facteur_borne }}"
+              value: "{{ facteur_borne }}"
 
           - service: input_datetime.set_datetime
             target:
