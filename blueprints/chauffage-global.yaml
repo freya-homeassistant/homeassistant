@@ -52,7 +52,6 @@ blueprint:
       name: Preset Confort
       description: Preset du thermostat à activer en mode Confort
       default: comfort
-      collapsed: true
       selector:
         select:
           options:
@@ -65,7 +64,6 @@ blueprint:
       name: Preset Éco
       description: Preset du thermostat à activer en mode Éco
       default: eco
-      collapsed: true
       selector:
         select:
           options:
@@ -92,7 +90,6 @@ blueprint:
       name: Température extérieure de référence (°C)
       description: Point pivot météo ; plus froid que cette valeur ⇒ on anticipe plus
       default: 10
-      collapsed: true
       selector:
         number:
           min: -10
@@ -103,7 +100,6 @@ blueprint:
       name: Sensibilité température extérieure (% / °C)
       description: Pourcentage ajouté par degré sous la référence (plafonné)
       default: 5
-      collapsed: true
       selector:
         number:
           min: 0
@@ -114,7 +110,6 @@ blueprint:
       name: Anticipation maximale (minutes)
       description: Plafond du temps d'anticipation appliqué
       default: 180
-      collapsed: true
       selector:
         number:
           min: 0
@@ -125,7 +120,6 @@ blueprint:
       name: Anticipation minimale (minutes)
       description: Plancher du temps d'anticipation quand un chauffage est requis
       default: 15
-      collapsed: true
       selector:
         number:
           min: 0
@@ -157,7 +151,6 @@ blueprint:
       name: Apprentissage – zone neutre (°C)
       description: Écart toléré autour de la consigne sans ajuster le facteur
       default: 0.2
-      collapsed: true
       selector:
         number:
           min: 0
@@ -168,7 +161,6 @@ blueprint:
       name: Apprentissage – pas d'ajustement (%)
       description: Variation en % appliquée au facteur quand l'erreur dépasse la zone neutre
       default: 3
-      collapsed: true
       selector:
         number:
           min: 0
@@ -179,7 +171,6 @@ blueprint:
       name: Apprentissage – facteur min
       description: Borne basse du facteur auto-apprenant
       default: 0.8
-      collapsed: true
       selector:
         number:
           min: 0.5
@@ -190,7 +181,6 @@ blueprint:
       name: Apprentissage – facteur max
       description: Borne haute du facteur auto-apprenant
       default: 2.0
-      collapsed: true
       selector:
         number:
           min: 0.5
