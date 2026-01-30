@@ -438,6 +438,9 @@ action:
       current_preset: >
         {{ state_attr(thermostat_entity, 'preset_mode') }}
 
+      hvac_is_off: >
+        {{ states(thermostat_entity) == 'off' }}
+
   - choose:
       - conditions:
           - condition: template
@@ -464,6 +467,9 @@ action:
           - condition: template
             value_template: >
               {{ current_preset != desired_preset or (trigger is defined and trigger.id == 'ha_start') }}
+          - condition: template
+            value_template: >
+              {{ (current_preset | default('')) != 'boost' and not hvac_is_off }}
         sequence:
           - service: climate.set_temperature
             target:
