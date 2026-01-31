@@ -172,7 +172,6 @@ mode: single
 trigger:
   - platform: homeassistant
     event: start
-    id: ha_start
 
   - platform: state
     entity_id: !input calendrier_presence
@@ -202,10 +201,6 @@ action:
       dernier_apprentissage_entity: !input dernier_apprentissage
       preset_confort_value: !input preset_confort
       preset_eco_value: !input preset_eco
-      zone_neutre: !input apprentissage_zone_neutre
-      step_pct: !input apprentissage_step_percent
-      facteur_min: !input apprentissage_facteur_min
-      facteur_max: !input apprentissage_facteur_max
 
       stored_start_ts: "{{ as_timestamp(states(prochaine_chauffe_entity), default=none) }}"
       stored_end_ts: "{{ as_timestamp(states(fin_confort_entity), default=none) }}"
@@ -294,6 +289,38 @@ action:
             data:
               timestamp: "{{ ts_end }}"
 
+  # ===== PILOTAGE PRESET CONFORT =====
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ stored_start_ts is not none
+                 and now().timestamp() >= stored_start_ts
+                 and now().timestamp() < stored_start_ts + 300
+                 and state_attr(thermostat_entity,'preset_mode') != preset_confort_value }}
+        sequence:
+          - service: climate.set_preset_mode
+            target:
+              entity_id: "{{ thermostat_entity }}"
+            data:
+              preset_mode: "{{ preset_confort_value }}"
+
+  # ===== RETOUR PRESET ECO =====
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ stored_end_ts is not none
+                 and now().timestamp() >= stored_end_ts
+                 and now().timestamp() < stored_end_ts + 300
+                 and state_attr(thermostat_entity,'preset_mode') != preset_eco_value }}
+        sequence:
+          - service: climate.set_preset_mode
+            target:
+              entity_id: "{{ thermostat_entity }}"
+            data:
+              preset_mode: "{{ preset_eco_value }}"
+
   # ===== APPRENTISSAGE ROBUSTE =====
   - choose:
       - conditions:
@@ -309,17 +336,18 @@ action:
           - variables:
               erreur: "{{ temp_cible - temp_actuelle }}"
               facteur_actuel: "{{ states(facteur_entity) | float(1.2) }}"
-              step_ratio: "{{ step_pct / 100 }}"
+              step_ratio: "{{ apprentissage_step_percent / 100 }}"
               nouveau_facteur: >
-                {% if erreur > zone_neutre %}
+                {% if erreur > apprentissage_zone_neutre %}
                   {{ facteur_actuel * (1 + step_ratio) }}
-                {% elif erreur < -zone_neutre %}
+                {% elif erreur < -apprentissage_zone_neutre %}
                   {{ facteur_actuel * (1 - step_ratio) }}
                 {% else %}
                   {{ facteur_actuel }}
                 {% endif %}
               facteur_borne: >
-                {{ [ [nouveau_facteur, facteur_min]|max, facteur_max ]|min }}
+                {{ [ [nouveau_facteur, apprentissage_facteur_min]|max,
+                     apprentissage_facteur_max ]|min }}
 
           - condition: template
             value_template: "{{ facteur_borne != facteur_actuel }}"
