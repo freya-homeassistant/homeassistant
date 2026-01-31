@@ -202,9 +202,7 @@ action:
       preset_confort_value: !input preset_confort
       preset_eco_value: !input preset_eco
 
-      stored_start_ts: "{{ as_timestamp(states(prochaine_chauffe_entity), default=none) }}"
       stored_end_ts: "{{ as_timestamp(states(fin_confort_entity), default=none) }}"
-      stored_learn_ts: "{{ as_timestamp(states(dernier_apprentissage_entity), default=none) }}"
 
   - condition: template
     value_template: "{{ not is_state(calendrier_absence_entity, 'on') }}"
@@ -289,14 +287,12 @@ action:
             data:
               timestamp: "{{ ts_end }}"
 
-  # ===== PILOTAGE PRESET CONFORT =====
+  # ===== PILOTAGE PRESET (LOGIQUE D'ÉTAT) =====
   - choose:
       - conditions:
           - condition: template
             value_template: >
-              {{ stored_start_ts is not none
-                 and now().timestamp() >= stored_start_ts
-                 and now().timestamp() < stored_start_ts + 300
+              {{ comfort_window
                  and state_attr(thermostat_entity,'preset_mode') != preset_confort_value }}
         sequence:
           - service: climate.set_preset_mode
@@ -305,14 +301,12 @@ action:
             data:
               preset_mode: "{{ preset_confort_value }}"
 
-  # ===== RETOUR PRESET ECO =====
-  - choose:
       - conditions:
           - condition: template
             value_template: >
-              {{ stored_end_ts is not none
+              {{ not comfort_window
+                 and stored_end_ts is not none
                  and now().timestamp() >= stored_end_ts
-                 and now().timestamp() < stored_end_ts + 300
                  and state_attr(thermostat_entity,'preset_mode') != preset_eco_value }}
         sequence:
           - service: climate.set_preset_mode
@@ -329,9 +323,7 @@ action:
               {{ comfort_window
                  and debut_presence is not none
                  and now().timestamp() >= debut_presence
-                 and now().timestamp() < debut_presence + 300
-                 and (stored_learn_ts is none
-                      or (debut_presence - stored_learn_ts) | abs > 300) }}
+                 and now().timestamp() < debut_presence + 300 }}
         sequence:
           - variables:
               erreur: "{{ temp_cible - temp_actuelle }}"
