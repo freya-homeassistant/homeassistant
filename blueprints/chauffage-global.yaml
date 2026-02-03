@@ -32,16 +32,42 @@ blueprint:
           domain: sensor
 
     consigne_confort:
-      name: Consigne Confort
+      name: Consigne Confort (référence apprentissage)
       selector:
         entity:
           domain: number
 
     consigne_eco:
-      name: Consigne Éco
+      name: Consigne Éco (référence apprentissage)
       selector:
         entity:
           domain: number
+
+    temperature_cible_confort:
+      name: Température cible Confort (optionnelle)
+      description: >
+        Si renseignée, cette température est forcée lors du passage en mode Confort.
+        Sinon, la température du preset est utilisée.
+      default: null
+      selector:
+        number:
+          min: 5
+          max: 30
+          step: 0.1
+          mode: box
+
+    temperature_cible_eco:
+      name: Température cible Éco (optionnelle)
+      description: >
+        Si renseignée, cette température est forcée lors du passage en mode Éco.
+        Sinon, la température du preset est utilisée.
+      default: null
+      selector:
+        number:
+          min: 5
+          max: 30
+          step: 0.1
+          mode: box
 
     preset_confort:
       name: Preset Confort
@@ -172,13 +198,10 @@ mode: single
 trigger:
   - platform: homeassistant
     event: start
-
   - platform: state
     entity_id: !input calendrier_presence
-
   - platform: state
     entity_id: !input calendrier_absence
-
   - platform: time_pattern
     minutes: "/5"
 
@@ -189,7 +212,6 @@ action:
       calendrier_absence_entity: !input calendrier_absence
       vitesse_entity: !input vitesse_chauffe_sensor
       consigne_confort_entity: !input consigne_confort
-      consigne_eco_entity: !input consigne_eco
       facteur_entity: !input facteur_chauffe
       temp_ext_entity: !input temp_exterieure
       temp_ext_ref: !input temp_ext_reference
@@ -201,6 +223,8 @@ action:
       dernier_apprentissage_entity: !input dernier_apprentissage
       preset_confort_value: !input preset_confort
       preset_eco_value: !input preset_eco
+      temp_confort_optionnelle: !input temperature_cible_confort
+      temp_eco_optionnelle: !input temperature_cible_eco
 
       stored_end_ts: "{{ as_timestamp(states(fin_confort_entity), default=none) }}"
 
@@ -218,7 +242,6 @@ action:
   - variables:
       payload: "{{ presence_events.get(calendrier_presence_entity) }}"
       now_iso: "{{ now().isoformat() }}"
-
       event: >
         {% if payload %}
           {{ payload.events
@@ -232,7 +255,6 @@ action:
               | list
               | first) }}
         {% else %}{{ none }}{% endif %}
-
       debut_presence: "{{ as_timestamp(event.start) if event else none }}"
       fin_presence: "{{ as_timestamp(event.end) if event else none }}"
 
@@ -240,10 +262,8 @@ action:
       temp_actuelle: "{{ state_attr(thermostat_entity,'current_temperature') | float(0) }}"
       temp_cible: "{{ states(consigne_confort_entity) | float(0) }}"
       delta: "{{ temp_cible - temp_actuelle }}"
-
       vitesse_raw: "{{ states(vitesse_entity) | replace(',', '.') | float(0) }}"
       vitesse: "{{ [vitesse_raw, 0.01] | max }}"
-
       facteur_base: "{{ states(facteur_entity) | float(1.2) }}"
       temp_ext: "{{ states(temp_ext_entity) | float(temp_ext_ref) }}"
       delta_ext: "{{ temp_ext_ref - temp_ext }}"
@@ -252,20 +272,16 @@ action:
           {{ [1 + delta_ext * coeff_ext_val / 100, 1.3] | min }}
         {% else %}1{% endif %}
       facteur: "{{ facteur_base * facteur_ext }}"
-
       minutes: >
         {% if delta > 0.1 %}
           {{ (delta / vitesse * facteur) | round(0,'ceil') }}
         {% else %}0{% endif %}
-
       minutes_final: >
         {% if minutes > 0 %}
           {{ [ [minutes, inertie_min]|max, inertie_max ]|min }}
         {% else %}0{% endif %}
-
       ts_start: "{{ (debut_presence - minutes_final*60) | int if debut_presence else 0 }}"
       ts_end: "{{ fin_presence | int if fin_presence else 0 }}"
-
       comfort_window: >
         {% set now_ts = now().timestamp() %}
         {{ ts_start > 0 and ts_end > 0 and now_ts >= ts_start and now_ts < ts_end }}
@@ -280,14 +296,13 @@ action:
               entity_id: !input prochaine_chauffe
             data:
               timestamp: "{{ ts_start }}"
-
           - service: input_datetime.set_datetime
             target:
               entity_id: !input fin_confort
             data:
               timestamp: "{{ ts_end }}"
 
-  # ===== PILOTAGE PRESET (LOGIQUE D'ÉTAT) =====
+  # ===== PILOTAGE CONFORT =====
   - choose:
       - conditions:
           - condition: template
@@ -301,6 +316,18 @@ action:
             data:
               preset_mode: "{{ preset_confort_value }}"
 
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ temp_confort_optionnelle is not none }}"
+                sequence:
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: "{{ thermostat_entity }}"
+                    data:
+                      temperature: "{{ temp_confort_optionnelle }}"
+
+      # ===== RETOUR ECO =====
       - conditions:
           - condition: template
             value_template: >
@@ -314,6 +341,17 @@ action:
               entity_id: "{{ thermostat_entity }}"
             data:
               preset_mode: "{{ preset_eco_value }}"
+
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ temp_eco_optionnelle is not none }}"
+                sequence:
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: "{{ thermostat_entity }}"
+                    data:
+                      temperature: "{{ temp_eco_optionnelle }}"
 
   # ===== APPRENTISSAGE ROBUSTE =====
   - choose:
