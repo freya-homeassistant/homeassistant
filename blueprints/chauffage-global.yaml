@@ -2,8 +2,9 @@ blueprint:
   name: Chauffage – Global (anticipation + pilotage + auto-apprentissage ROBUSTE)
   description: >
     Anticipation de chauffe basée sur calendrier + vitesse de chauffe,
-    pilotage Confort / Éco, et auto-apprentissage robuste déclenché
-    sur l'heure réelle de début de présence (indépendant des états calendar).
+    pilotage Confort / Éco avec températures optionnelles,
+    et auto-apprentissage robuste déclenché
+    sur l'heure réelle de début de présence.
   domain: automation
 
   input:
@@ -32,22 +33,19 @@ blueprint:
           domain: sensor
 
     consigne_confort:
-      name: Consigne Confort (référence apprentissage)
+      name: Consigne Confort (référence par défaut)
       selector:
         entity:
           domain: number
 
     consigne_eco:
-      name: Consigne Éco (référence apprentissage)
+      name: Consigne Éco (référence)
       selector:
         entity:
           domain: number
 
     temperature_cible_confort:
       name: Température cible Confort (optionnelle)
-      description: >
-        Si renseignée, cette température est forcée lors du passage en mode Confort.
-        Sinon, la température du preset est utilisée.
       default: null
       selector:
         number:
@@ -58,9 +56,6 @@ blueprint:
 
     temperature_cible_eco:
       name: Température cible Éco (optionnelle)
-      description: >
-        Si renseignée, cette température est forcée lors du passage en mode Éco.
-        Sinon, la température du preset est utilisée.
       default: null
       selector:
         number:
@@ -225,7 +220,6 @@ action:
       preset_eco_value: !input preset_eco
       temp_confort_optionnelle: !input temperature_cible_confort
       temp_eco_optionnelle: !input temperature_cible_eco
-
       stored_end_ts: "{{ as_timestamp(states(fin_confort_entity), default=none) }}"
 
   - condition: template
@@ -260,36 +254,49 @@ action:
 
   - variables:
       temp_actuelle: "{{ state_attr(thermostat_entity,'current_temperature') | float(0) }}"
-      temp_cible: "{{ states(consigne_confort_entity) | float(0) }}"
+
+      temp_cible: >
+        {% if temp_confort_optionnelle is not none %}
+          {{ temp_confort_optionnelle | float }}
+        {% else %}
+          {{ states(consigne_confort_entity) | float(0) }}
+        {% endif %}
+
       delta: "{{ temp_cible - temp_actuelle }}"
+
       vitesse_raw: "{{ states(vitesse_entity) | replace(',', '.') | float(0) }}"
       vitesse: "{{ [vitesse_raw, 0.01] | max }}"
+
       facteur_base: "{{ states(facteur_entity) | float(1.2) }}"
       temp_ext: "{{ states(temp_ext_entity) | float(temp_ext_ref) }}"
       delta_ext: "{{ temp_ext_ref - temp_ext }}"
+
       facteur_ext: >
         {% if delta_ext > 0 %}
           {{ [1 + delta_ext * coeff_ext_val / 100, 1.3] | min }}
         {% else %}1{% endif %}
+
       facteur: "{{ facteur_base * facteur_ext }}"
+
       minutes: >
         {% if delta > 0.1 %}
           {{ (delta / vitesse * facteur) | round(0,'ceil') }}
         {% else %}0{% endif %}
+
       minutes_final: >
         {% if minutes > 0 %}
           {{ [ [minutes, inertie_min]|max, inertie_max ]|min }}
         {% else %}0{% endif %}
+
       ts_start: "{{ (debut_presence - minutes_final*60) | int if debut_presence else 0 }}"
       ts_end: "{{ fin_presence | int if fin_presence else 0 }}"
+
       comfort_window: >
         {% set now_ts = now().timestamp() %}
         {{ ts_start > 0 and ts_end > 0 and now_ts >= ts_start and now_ts < ts_end }}
 
   - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ ts_start > 0 and ts_end > 0 }}"
+      - conditions: "{{ ts_start > 0 and ts_end > 0 }}"
         sequence:
           - service: input_datetime.set_datetime
             target:
@@ -302,13 +309,11 @@ action:
             data:
               timestamp: "{{ ts_end }}"
 
-  # ===== PILOTAGE CONFORT =====
+  # ===== PILOTAGE CONFORT / ECO =====
   - choose:
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ comfort_window
-                 and state_attr(thermostat_entity,'preset_mode') != preset_confort_value }}
+      - conditions: >
+          {{ comfort_window
+             and state_attr(thermostat_entity,'preset_mode') != preset_confort_value }}
         sequence:
           - service: climate.set_preset_mode
             target:
@@ -317,9 +322,7 @@ action:
               preset_mode: "{{ preset_confort_value }}"
 
           - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ temp_confort_optionnelle is not none }}"
+              - conditions: "{{ temp_confort_optionnelle is not none }}"
                 sequence:
                   - service: climate.set_temperature
                     target:
@@ -327,14 +330,11 @@ action:
                     data:
                       temperature: "{{ temp_confort_optionnelle }}"
 
-      # ===== RETOUR ECO =====
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ not comfort_window
-                 and stored_end_ts is not none
-                 and now().timestamp() >= stored_end_ts
-                 and state_attr(thermostat_entity,'preset_mode') != preset_eco_value }}
+      - conditions: >
+          {{ not comfort_window
+             and stored_end_ts is not none
+             and now().timestamp() >= stored_end_ts
+             and state_attr(thermostat_entity,'preset_mode') != preset_eco_value }}
         sequence:
           - service: climate.set_preset_mode
             target:
@@ -343,9 +343,7 @@ action:
               preset_mode: "{{ preset_eco_value }}"
 
           - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ temp_eco_optionnelle is not none }}"
+              - conditions: "{{ temp_eco_optionnelle is not none }}"
                 sequence:
                   - service: climate.set_temperature
                     target:
@@ -355,13 +353,11 @@ action:
 
   # ===== APPRENTISSAGE ROBUSTE =====
   - choose:
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ comfort_window
-                 and debut_presence is not none
-                 and now().timestamp() >= debut_presence
-                 and now().timestamp() < debut_presence + 300 }}
+      - conditions: >
+          {{ comfort_window
+             and debut_presence is not none
+             and now().timestamp() >= debut_presence
+             and now().timestamp() < debut_presence + 300 }}
         sequence:
           - variables:
               erreur: "{{ temp_cible - temp_actuelle }}"
@@ -379,8 +375,7 @@ action:
                 {{ [ [nouveau_facteur, apprentissage_facteur_min]|max,
                      apprentissage_facteur_max ]|min }}
 
-          - condition: template
-            value_template: "{{ facteur_borne != facteur_actuel }}"
+          - condition: "{{ facteur_borne != facteur_actuel }}"
 
           - service: input_number.set_value
             target:
