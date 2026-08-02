@@ -249,6 +249,10 @@ action:
       temp_eco_optionnelle: !input temperature_cible_eco
       erreur_notification_threshold: !input erreur_thermique_notification
       notify_service_name: !input notify_service
+      apprentissage_zone_neutre_val: !input apprentissage_zone_neutre
+      apprentissage_step_percent_val: !input apprentissage_step_percent
+      apprentissage_facteur_min_val: !input apprentissage_facteur_min
+      apprentissage_facteur_max_val: !input apprentissage_facteur_max
 
       # Vérification d'existence des entités critiques
       thermostat_exists: "{{ states(thermostat_entity) not in ['unknown', 'unavailable'] }}"
@@ -488,20 +492,20 @@ action:
           - variables:
               erreur: "{{ temp_cible - temp_actuelle }}"
               facteur_actuel: "{{ states(facteur_entity) | float(1.2) }}"
-              step_ratio: "{{ apprentissage_step_percent / 100 }}"
+              step_ratio: "{{ apprentissage_step_percent_val / 100 }}"
 
               nouveau_facteur: >
-                {% if erreur > apprentissage_zone_neutre %}
+                {% if erreur > apprentissage_zone_neutre_val %}
                   {{ facteur_actuel * (1 + step_ratio) }}
-                {% elif erreur < -apprentissage_zone_neutre %}
+                {% elif erreur < -apprentissage_zone_neutre_val %}
                   {{ facteur_actuel * (1 - step_ratio) }}
                 {% else %}
                   {{ facteur_actuel }}
                 {% endif %}
 
               facteur_borne: >
-                {{ [ [nouveau_facteur, apprentissage_facteur_min]|max,
-                     apprentissage_facteur_max ]|min }}
+                {{ [ [nouveau_facteur, apprentissage_facteur_min_val]|max,
+                     apprentissage_facteur_max_val ]|min }}
 
           # Mettre à jour uniquement si changement
           - condition: "{{ facteur_borne != facteur_actuel }}"
