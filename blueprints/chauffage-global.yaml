@@ -256,7 +256,7 @@ action:
 
       # Vérification d'existence des entités critiques
       thermostat_exists: "{{ states(thermostat_entity) not in ['unknown', 'unavailable'] }}"
-      vitesse_exists: "{{ states(vitesse_entity) not in ['unknown', 'unavailable'] }}"
+      vitesse_exists: "{{ states[vitesse_entity] is not none }}"
       consigne_confort_exists: "{{ states(consigne_confort_entity) not in ['unknown', 'unavailable'] }}"
       absence_configured: "{{ calendrier_absence_entity != '' }}"
 
