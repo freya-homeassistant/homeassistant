@@ -1,60 +1,50 @@
 blueprint:
-  name: Chauffage – Global ROBUSTE (anticipation + pilotage + auto-apprentissage)
+  name: Chauffage – Global (anticipation + pilotage + auto-apprentissage) v2
   description: >
-    Version renforcée avec validations d'entités, gestion d'erreurs et logging.
-
     Anticipation de chauffe basée sur calendrier + vitesse de chauffe,
-    pilotage Confort / Éco avec températures optionnelles,
-    et auto-apprentissage robuste déclenché sur l'heure réelle de début de présence.
+    pilotage Confort / Éco, auto-apprentissage du facteur d'inertie.
 
-    🔒 Améliorations robustesse:
-    - Validation complète des entités sources (capteurs, calendriers)
-    - Protection contre les valeurs invalides (0°C, températures impossibles)
-    - Gestion explicite des absences manquantes
-    - Logging des changements d'apprentissage
-    - Notifications d'erreur thermique persistante
-    - Gestion des événements calendrier multiples
 
+    v2 : plus aucun blocage global de l'automatisation. Un thermostat
+    indisponible n'empêche plus les calculs (seules les commandes climate
+    sont sautées), et une absence force le mode Éco au lieu de tout figer.
+    Notifications limitées (une seule alerte thermique par événement,
+    alertes de configuration au plus une fois par heure).
   domain: automation
-
+  homeassistant:
+    min_version: 2024.10.0
   input:
     thermostat:
       name: Thermostat
       selector:
         entity:
           domain: climate
-
     calendrier_presence:
       name: Calendrier Présence
       selector:
         entity:
           domain: calendar
-
     calendrier_absence:
       name: Calendrier Absence (optionnel - laisser vide si non utilisé)
       default: ""
       selector:
         entity:
           domain: calendar
-
     vitesse_chauffe_sensor:
       name: Vitesse de chauffe (°C/min) ou helper numérique
       selector:
         entity:
           domain: [sensor, input_number]
-
     consigne_confort:
       name: Consigne Confort (nombre ou entité number)
       selector:
         entity:
           domain: [number, input_number, sensor]
-
     consigne_eco:
       name: Consigne Éco (nombre ou entité number)
       selector:
         entity:
           domain: [number, input_number, sensor]
-
     temperature_cible_confort:
       name: Température cible Confort (optionnelle - surcharge consigne_confort)
       default: null
@@ -64,7 +54,6 @@ blueprint:
           max: 30
           step: 0.1
           mode: box
-
     temperature_cible_eco:
       name: Température cible Éco (optionnelle - surcharge consigne_eco)
       default: null
@@ -74,7 +63,6 @@ blueprint:
           max: 30
           step: 0.1
           mode: box
-
     preset_confort:
       name: Preset Confort
       default: comfort
@@ -85,7 +73,6 @@ blueprint:
               value: comfort
             - label: Eco
               value: eco
-
     preset_eco:
       name: Preset Éco
       default: eco
@@ -96,19 +83,16 @@ blueprint:
               value: eco
             - label: Confort
               value: comfort
-
     facteur_chauffe:
       name: Facteur auto-apprenant (input_number)
       selector:
         entity:
           domain: input_number
-
     temp_exterieure:
       name: Température extérieure (capteur)
       selector:
         entity:
           domain: sensor
-
     temp_ext_reference:
       name: Température extérieure de référence
       default: 10
@@ -117,7 +101,6 @@ blueprint:
           min: -10
           max: 20
           step: 1
-
     coeff_ext:
       name: Sensibilité extérieure (% / °C)
       default: 5
@@ -126,7 +109,6 @@ blueprint:
           min: 0
           max: 10
           step: 1
-
     inertie_max_minutes:
       name: Anticipation maximale (min)
       default: 180
@@ -135,7 +117,6 @@ blueprint:
           min: 0
           max: 600
           step: 5
-
     inertie_min_minutes:
       name: Anticipation minimale (min)
       default: 15
@@ -144,25 +125,21 @@ blueprint:
           min: 0
           max: 120
           step: 5
-
     prochaine_chauffe:
       name: Début Confort calculé (input_datetime)
       selector:
         entity:
           domain: input_datetime
-
     fin_confort:
       name: Fin Confort (input_datetime)
       selector:
         entity:
           domain: input_datetime
-
     dernier_apprentissage:
       name: Dernier apprentissage (input_datetime)
       selector:
         entity:
           domain: input_datetime
-
     apprentissage_zone_neutre:
       name: Zone neutre (°C)
       default: 0.2
@@ -171,7 +148,6 @@ blueprint:
           min: 0
           max: 1
           step: 0.05
-
     apprentissage_step_percent:
       name: Pas apprentissage (%)
       default: 3
@@ -180,7 +156,6 @@ blueprint:
           min: 0
           max: 10
           step: 1
-
     apprentissage_facteur_min:
       name: Facteur min
       default: 0.8
@@ -189,7 +164,6 @@ blueprint:
           min: 0.5
           max: 2
           step: 0.05
-
     apprentissage_facteur_max:
       name: Facteur max
       default: 2.0
@@ -198,36 +172,44 @@ blueprint:
           min: 0.5
           max: 3
           step: 0.05
-
     erreur_thermique_notification:
-      name: Notifier si erreur thermique > (°C)
+      name: Notifier si l'écart de température reste > (°C)
       default: 1.5
       selector:
         number:
           min: 0.5
           max: 3
           step: 0.1
-
+    erreur_thermique_delai:
+      name: Délai de grâce après le début de présence avant d'alerter (min)
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 120
+          step: 5
     notify_service:
-      name: Service de notification (optionnel)
+      name: Service de notification (ex. notify.frederic)
       default: "persistent_notification.create"
       selector:
         text:
+          mode: single
 
 mode: single
+max_exceeded: silent
 
-trigger:
-  - platform: homeassistant
+triggers:
+  - trigger: homeassistant
     event: start
-  - platform: state
+  - trigger: state
     entity_id: !input calendrier_presence
-  - platform: state
+  - trigger: state
     entity_id: !input calendrier_absence
-  - platform: time_pattern
+  - trigger: time_pattern
     minutes: "/5"
 
-action:
-  # ===== VALIDATION INITIALE =====
+actions:
+  # ===== VARIABLES & ÉTAT DES ENTITÉS (aucun blocage) =====
   - variables:
       thermostat_entity: !input thermostat
       calendrier_presence_entity: !input calendrier_presence
@@ -240,7 +222,6 @@ action:
       coeff_ext_val: !input coeff_ext
       inertie_max: !input inertie_max_minutes
       inertie_min: !input inertie_min_minutes
-      prochaine_chauffe_entity: !input prochaine_chauffe
       fin_confort_entity: !input fin_confort
       dernier_apprentissage_entity: !input dernier_apprentissage
       preset_confort_value: !input preset_confort
@@ -248,284 +229,211 @@ action:
       temp_confort_optionnelle: !input temperature_cible_confort
       temp_eco_optionnelle: !input temperature_cible_eco
       erreur_notification_threshold: !input erreur_thermique_notification
+      erreur_delai_min: !input erreur_thermique_delai
       notify_service_name: !input notify_service
       apprentissage_zone_neutre_val: !input apprentissage_zone_neutre
       apprentissage_step_percent_val: !input apprentissage_step_percent
       apprentissage_facteur_min_val: !input apprentissage_facteur_min
       apprentissage_facteur_max_val: !input apprentissage_facteur_max
-
-      # Vérification d'existence des entités critiques
+      now_ts: "{{ now().timestamp() }}"
       thermostat_exists: "{{ states(thermostat_entity) not in ['unknown', 'unavailable'] }}"
-      vitesse_exists: "{{ states[vitesse_entity] is not none }}"
+      vitesse_exists: "{{ states(vitesse_entity) not in ['unknown', 'unavailable', 'none', ''] }}"
       consigne_confort_exists: "{{ states(consigne_confort_entity) not in ['unknown', 'unavailable'] }}"
-      absence_configured: "{{ calendrier_absence_entity != '' }}"
-
-      # Drapeau absence (par défaut False si calendrier non configuré ou 'off')
-      calendrier_absence_actif: >
-        {%- if absence_configured %}
-          {{ is_state(calendrier_absence_entity, 'on') }}
-        {%- else %}
-          false
-        {%- endif %}
-
+      absence_configured: "{{ calendrier_absence_entity | string | length > 0 }}"
+      calendrier_absence_actif: "{{ absence_configured and is_state(calendrier_absence_entity, 'on') }}"
       stored_end_ts: "{{ as_timestamp(states(fin_confort_entity), default=none) }}"
 
-  # ===== VALIDATION CRITIQUE =====
-  - condition: and
-    conditions:
-      - condition: template
-        value_template: "{{ thermostat_exists }}"
-        enabled: true
-      - condition: template
-        value_template: "{{ not calendrier_absence_actif }}"
-        enabled: true
-
-  # ===== ALARME ENTITÉS MANQUANTES =====
-  - choose:
-      - conditions: "{{ not thermostat_exists }}"
-        sequence:
-          - service: "{{ notify_service_name }}"
-            data:
-              title: "⚠️ Chauffage - Erreur de configuration"
-              message: "Thermostat {{ thermostat_entity }} indisponible ou inexistant"
-
-      - conditions: "{{ not vitesse_exists }}"
-        sequence:
-          - service: "{{ notify_service_name }}"
-            data:
-              title: "⚠️ Chauffage - Capteur vitesse manquant"
-              message: "Capteur {{ vitesse_entity }} indisponible. Utilisation valeur fallback 0.01°C/min"
-
-      - conditions: "{{ not consigne_confort_exists }}"
-        sequence:
-          - service: "{{ notify_service_name }}"
-            data:
-              title: "⚠️ Chauffage - Consigne manquante"
-              message: "Consigne confort {{ consigne_confort_entity }} indisponible ou invalide"
-
   # ===== RÉCUPÉRATION CALENDRIER =====
-  - service: calendar.get_events
+  - action: calendar.get_events
     target:
       entity_id: !input calendrier_presence
     data:
       start_date_time: "{{ now().isoformat() }}"
       end_date_time: "{{ (now() + timedelta(days=7)).isoformat() }}"
     response_variable: presence_events
+    continue_on_error: true
 
-  # ===== EXTRACTION ÉVÉNEMENTS PRÉSENCE =====
+  # ===== EXTRACTION ÉVÉNEMENT PRÉSENCE (comparaison par timestamps) =====
   - variables:
-      payload: "{{ presence_events.get(calendrier_presence_entity) }}"
-      now_iso: "{{ now().isoformat() }}"
+      events_list: "{{ ((presence_events | default({})).get(calendrier_presence_entity) or {}).get('events', []) }}"
+      presence_info: >-
+        {%- set ns = namespace(s=none, f=none, cur=false) -%}
+        {%- for e in events_list -%}
+          {%- set s = as_timestamp(e.start, none) -%}
+          {%- set f = as_timestamp(e.end, none) -%}
+          {%- if s is not none and f is not none -%}
+            {%- if s <= now_ts and f > now_ts and not ns.cur -%}
+              {%- set ns.s = s -%}{%- set ns.f = f -%}{%- set ns.cur = true -%}
+            {%- elif s > now_ts and not ns.cur and (ns.s is none or s < ns.s) -%}
+              {%- set ns.s = s -%}{%- set ns.f = f -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ {'start': ns.s, 'end': ns.f, 'current': ns.cur} }}
+      debut_presence: "{{ presence_info.start }}"
+      fin_presence: "{{ presence_info.end }}"
+      event_en_cours: "{{ presence_info.current }}"
 
-      # Événement actuel (en cours)
-      event_actuel: >
-        {% if payload %}
-          {{ payload.events
-             | selectattr('start','<=',now_iso)
-             | selectattr('end','>',now_iso)
-             | list
-             | first }}
-        {% else %}{{ none }}{% endif %}
-
-      # Événement suivant si aucun actuel
-      event_suivant: >
-        {% if payload and not event_actuel %}
-          {{ payload.events
-             | selectattr('start','>',now_iso)
-             | list
-             | first }}
-        {% else %}{{ none }}{% endif %}
-
-      # Utiliser l'événement pertinent
-      event: >
-        {{ event_actuel if event_actuel else event_suivant }}
-
-      debut_presence: "{{ as_timestamp(event.start) if event else none }}"
-      fin_presence: "{{ as_timestamp(event.end) if event else none }}"
-
-  # ===== CALCUL THERMIQUE ROBUSTE =====
+  # ===== CALCUL THERMIQUE =====
   - variables:
-      temp_actuelle_raw: "{{ state_attr(thermostat_entity,'current_temperature') }}"
-      temp_actuelle: >
-        {%- if temp_actuelle_raw is not none and temp_actuelle_raw|float(-999) > -99 %}
-          {{ temp_actuelle_raw | float(20) }}
-        {%- else %}
-          20
-        {%- endif %}
-
-      # Température cible avec validation
-      temp_cible_brute: >
-        {% if temp_confort_optionnelle is not none %}
-          {{ temp_confort_optionnelle | float(20) }}
-        {% else %}
-          {{ states(consigne_confort_entity) | float(20) }}
-        {% endif %}
-
-      # Vérifier que la température cible est valide (5-30°C)
-      temp_cible: >
-        {%- set val = temp_cible_brute | float(20) -%}
-        {%- if val >= 5 and val <= 30 %}
-          {{ val }}
-        {%- else %}
-          20
-        {%- endif %}
-
+      temp_actuelle_raw: "{{ state_attr(thermostat_entity, 'current_temperature') }}"
+      temp_valide: "{{ temp_actuelle_raw is number and -20 < temp_actuelle_raw < 50 }}"
+      temp_actuelle: "{{ temp_actuelle_raw | float(20) if temp_valide else 20 }}"
+      temp_cible_brute: >-
+        {{ temp_confort_optionnelle | float(20) if temp_confort_optionnelle is not none
+           else states(consigne_confort_entity) | float(20) }}
+      temp_cible: "{{ temp_cible_brute if 5 <= temp_cible_brute <= 30 else 20 }}"
       delta: "{{ temp_cible - temp_actuelle }}"
-
-      # Vitesse de chauffe avec fallback robuste
       vitesse_raw: "{{ states(vitesse_entity) | replace(',', '.') | float(0.5) }}"
-      vitesse: >
-        {%- set v = [vitesse_raw, 0.01] | max -%}
-        {%- if v > 10 %}0.5{%- else %}{{ v }}{%- endif %}
-
+      vitesse: "{{ 0.5 if vitesse_raw > 10 else [vitesse_raw, 0.01] | max }}"
       facteur_base: "{{ states(facteur_entity) | float(1.2) }}"
       temp_ext: "{{ states(temp_ext_entity) | float(temp_ext_ref) }}"
       delta_ext: "{{ temp_ext_ref - temp_ext }}"
-
-      # Facteur de compensation extérieure
-      facteur_ext: >
-        {% if delta_ext > 0 %}
-          {{ [1 + (delta_ext * coeff_ext_val / 100), 1.3] | min }}
-        {% else %}1{% endif %}
-
+      facteur_ext: "{{ [1 + (delta_ext * coeff_ext_val / 100), 1.3] | min if delta_ext > 0 else 1 }}"
       facteur: "{{ [facteur_base * facteur_ext, 0.5] | max }}"
-
-      # Calcul anticipation
-      minutes: >
-        {% if delta > 0.1 %}
-          {{ (delta / vitesse * facteur) | round(0,'ceil') }}
-        {% else %}0{% endif %}
-
-      # Limitation anticipation
-      minutes_final: >
-        {% if minutes > 0 %}
-          {{ [ [minutes, inertie_min]|max, inertie_max ]|min }}
-        {% else %}0{% endif %}
-
-      ts_start: "{{ (debut_presence - minutes_final*60) | int if debut_presence else 0 }}"
+      minutes: "{{ (delta / vitesse * facteur) | round(0, 'ceil') if delta > 0.1 else 0 }}"
+      minutes_final: "{{ [[minutes, inertie_min] | max, inertie_max] | min if minutes > 0 else 0 }}"
+      ts_start: "{{ (debut_presence - minutes_final * 60) | int if debut_presence else 0 }}"
       ts_end: "{{ fin_presence | int if fin_presence else 0 }}"
+      # Absence = jamais de fenêtre confort (au lieu de bloquer l'automatisation)
+      comfort_window: >-
+        {{ not calendrier_absence_actif
+           and ts_start > 0 and ts_end > 0
+           and now_ts >= ts_start and now_ts < ts_end }}
 
-      comfort_window: >
-        {% set now_ts = now().timestamp() %}
-        {{ ts_start > 0 and ts_end > 0 and now_ts >= ts_start and now_ts < ts_end }}
+  # ===== MISE À JOUR DES HELPERS =====
+  - if:
+      - condition: template
+        value_template: "{{ ts_start > 0 and ts_end > 0 }}"
+    then:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: !input prochaine_chauffe
+        data:
+          timestamp: "{{ ts_start }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: !input fin_confort
+        data:
+          timestamp: "{{ ts_end }}"
 
-  # ===== MISE À JOUR TIMESTAMPS =====
+  # ===== PILOTAGE CONFORT / ECO (sauté uniquement si thermostat indisponible) =====
   - choose:
-      - conditions: "{{ ts_start > 0 and ts_end > 0 }}"
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ thermostat_exists and comfort_window
+                 and state_attr(thermostat_entity, 'preset_mode') != preset_confort_value }}
         sequence:
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input prochaine_chauffe
-            data:
-              timestamp: "{{ ts_start }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input fin_confort
-            data:
-              timestamp: "{{ ts_end }}"
-
-  # ===== PILOTAGE CONFORT / ECO =====
-  - choose:
-      # Passage en Confort
-      - conditions: >
-          {{ comfort_window
-             and state_attr(thermostat_entity,'preset_mode') != preset_confort_value }}
-        sequence:
-          - service: climate.set_preset_mode
+          - action: climate.set_preset_mode
             target:
               entity_id: "{{ thermostat_entity }}"
             data:
               preset_mode: "{{ preset_confort_value }}"
-
-          - choose:
-              - conditions: "{{ temp_confort_optionnelle is not none }}"
-                sequence:
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: "{{ thermostat_entity }}"
-                    data:
-                      temperature: "{{ temp_confort_optionnelle }}"
-
-      # Passage en Éco
-      - conditions: >
-          {{ not comfort_window
-             and stored_end_ts is not none
-             and now().timestamp() >= stored_end_ts
-             and state_attr(thermostat_entity,'preset_mode') != preset_eco_value }}
+          - if:
+              - condition: template
+                value_template: "{{ temp_confort_optionnelle is not none }}"
+            then:
+              - action: climate.set_temperature
+                target:
+                  entity_id: "{{ thermostat_entity }}"
+                data:
+                  temperature: "{{ temp_confort_optionnelle }}"
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ thermostat_exists and not comfort_window
+                 and (calendrier_absence_actif
+                      or (stored_end_ts is not none and now_ts >= stored_end_ts))
+                 and state_attr(thermostat_entity, 'preset_mode') != preset_eco_value }}
         sequence:
-          - service: climate.set_preset_mode
+          - action: climate.set_preset_mode
             target:
               entity_id: "{{ thermostat_entity }}"
             data:
               preset_mode: "{{ preset_eco_value }}"
+          - if:
+              - condition: template
+                value_template: "{{ temp_eco_optionnelle is not none }}"
+            then:
+              - action: climate.set_temperature
+                target:
+                  entity_id: "{{ thermostat_entity }}"
+                data:
+                  temperature: "{{ temp_eco_optionnelle }}"
 
-          - choose:
-              - conditions: "{{ temp_eco_optionnelle is not none }}"
-                sequence:
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: "{{ thermostat_entity }}"
-                    data:
-                      temperature: "{{ temp_eco_optionnelle }}"
+  # ===== NOTIFICATIONS (limitées, sans blocage) =====
+  - variables:
+      # Alertes de configuration : au plus 1 fois par heure
+      cfg_due: "{{ now().minute < 5 }}"
+      # Alerte thermique : une seule fois par événement, après le délai de grâce
+      err_start: "{{ (debut_presence + erreur_delai_min * 60) if debut_presence else 0 }}"
+      thermique_due: >-
+        {{ comfort_window and event_en_cours and temp_valide and err_start > 0
+           and delta > erreur_notification_threshold
+           and now_ts >= err_start and now_ts < err_start + 300 }}
+      notifications: >-
+        {%- set ns = namespace(items=[]) -%}
+        {%- if cfg_due and not thermostat_exists -%}
+          {%- set ns.items = ns.items + [{'id': 'chauffage_thermostat', 'title': '⚠️ Chauffage - Thermostat indisponible', 'message': 'Le thermostat ' ~ thermostat_entity ~ ' est indisponible ou inexistant. Aucune commande envoyée.'}] -%}
+        {%- endif -%}
+        {%- if cfg_due and not vitesse_exists -%}
+          {%- set ns.items = ns.items + [{'id': 'chauffage_vitesse', 'title': '⚠️ Chauffage - Capteur vitesse manquant', 'message': 'Capteur ' ~ vitesse_entity ~ ' indisponible : valeur de repli utilisée pour le calcul.'}] -%}
+        {%- endif -%}
+        {%- if cfg_due and not consigne_confort_exists -%}
+          {%- set ns.items = ns.items + [{'id': 'chauffage_consigne', 'title': '⚠️ Chauffage - Consigne manquante', 'message': 'Consigne confort ' ~ consigne_confort_entity ~ ' indisponible ou invalide : 20 °C utilisés.'}] -%}
+        {%- endif -%}
+        {%- if thermique_due -%}
+          {%- set ns.items = ns.items + [{'id': 'chauffage_thermique', 'title': '⚠️ Chauffage - Erreur thermique', 'message': 'Température insuffisante ' ~ erreur_delai_min ~ ' min après le début de présence. Écart : ' ~ (delta | round(1)) ~ ' °C (seuil ' ~ erreur_notification_threshold ~ ' °C). Actuelle : ' ~ (temp_actuelle | round(1)) ~ ' °C, cible : ' ~ (temp_cible | round(1)) ~ ' °C.'}] -%}
+        {%- endif -%}
+        {{ ns.items }}
+  - repeat:
+      for_each: "{{ notifications }}"
+      sequence:
+        - action: "{{ notify_service_name }}"
+          continue_on_error: true
+          data: >-
+            {{ {'title': repeat.item.title, 'message': repeat.item.message}
+               | combine({'notification_id': repeat.item.id}
+                         if notify_service_name == 'persistent_notification.create' else {}) }}
 
-  # ===== DÉTECTION ERREUR THERMIQUE PERSISTANTE =====
-  - choose:
-      - conditions: >
-          {{ comfort_window and delta > erreur_notification_threshold }}
-        sequence:
-          - service: "{{ notify_service_name }}"
-            data:
-              title: "⚠️ Chauffage - Erreur thermique"
-              message: >
-                Fenêtre confort active mais température insuffisante.
-                Écart: {{ delta | round(1) }}°C (seuil: {{ erreur_notification_threshold }}°C)
-                Actuelle: {{ temp_actuelle | round(1) }}°C, Cible: {{ temp_cible | round(1) }}°C
-
-  # ===== APPRENTISSAGE ROBUSTE =====
-  - choose:
-      - conditions: >
-          {{ comfort_window
+  # ===== APPRENTISSAGE (une seule fois par début de présence) =====
+  - if:
+      - condition: template
+        value_template: >-
+          {{ comfort_window and event_en_cours and temp_valide
              and debut_presence is not none
-             and now().timestamp() >= debut_presence
-             and now().timestamp() < debut_presence + 300 }}
-        sequence:
-          - variables:
-              erreur: "{{ temp_cible - temp_actuelle }}"
-              facteur_actuel: "{{ states(facteur_entity) | float(1.2) }}"
-              step_ratio: "{{ apprentissage_step_percent_val / 100 }}"
-
-              nouveau_facteur: >
-                {% if erreur > apprentissage_zone_neutre_val %}
-                  {{ facteur_actuel * (1 + step_ratio) }}
-                {% elif erreur < -apprentissage_zone_neutre_val %}
-                  {{ facteur_actuel * (1 - step_ratio) }}
-                {% else %}
-                  {{ facteur_actuel }}
-                {% endif %}
-
-              facteur_borne: >
-                {{ [ [nouveau_facteur, apprentissage_facteur_min_val]|max,
-                     apprentissage_facteur_max_val ]|min }}
-
-          # Mettre à jour uniquement si changement
-          - condition: "{{ facteur_borne != facteur_actuel }}"
-
-          - service: input_number.set_value
+             and now_ts >= debut_presence and now_ts < debut_presence + 300
+             and (as_timestamp(states(dernier_apprentissage_entity), 0) | int) != (debut_presence | int) }}
+    then:
+      - variables:
+          erreur: "{{ temp_cible - temp_actuelle }}"
+          facteur_actuel: "{{ states(facteur_entity) | float(1.2) }}"
+          step_ratio: "{{ apprentissage_step_percent_val / 100 }}"
+          nouveau_facteur: >-
+            {{ facteur_actuel * (1 + step_ratio) if erreur > apprentissage_zone_neutre_val
+               else facteur_actuel * (1 - step_ratio) if erreur < -apprentissage_zone_neutre_val
+               else facteur_actuel }}
+          facteur_borne: >-
+            {{ ([[nouveau_facteur, apprentissage_facteur_min_val] | max,
+                 apprentissage_facteur_max_val] | min) | round(3) }}
+      - if:
+          - condition: template
+            value_template: "{{ (facteur_borne - facteur_actuel) | abs > 0.0005 }}"
+        then:
+          - action: input_number.set_value
             target:
               entity_id: !input facteur_chauffe
             data:
               value: "{{ facteur_borne }}"
-
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input dernier_apprentissage
-            data:
-              timestamp: "{{ debut_presence | int }}"
-
-          # Log du changement
-          - service: logbook.log
+          - action: logbook.log
             data:
               name: "Chauffage Apprentissage"
-              message: >
-                Ajustement facteur: {{ facteur_actuel | round(3) }} → {{ facteur_borne | round(3) }}
-                (erreur: {{ erreur | round(2) }}°C)
+              message: >-
+                Ajustement facteur : {{ facteur_actuel | round(3) }} → {{ facteur_borne | round(3) }}
+                (erreur : {{ erreur | round(2) }} °C)
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: !input dernier_apprentissage
+        data:
+          timestamp: "{{ debut_presence | int }}"
