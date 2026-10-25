@@ -1,5 +1,5 @@
 blueprint:
-  name: Chauffage – Global (anticipation + pilotage + auto-apprentissage) v2
+  name: Chauffage – Global (anticipation + pilotage + auto-apprentissage)
   description: >
     Anticipation de chauffe basée sur calendrier + vitesse de chauffe,
     pilotage Confort / Éco, auto-apprentissage du facteur d'inertie.
